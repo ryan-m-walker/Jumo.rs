@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     audio::player::AudioPlayer,
     events::EventBus,
-    state::{Speaker, TranscriptLine},
+    state::{Speaker, TranscriptLine, TranscriptMessage},
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
 use crate::{
@@ -125,6 +125,15 @@ impl App {
                 self.anthropic
                     .send_message(text, &self.state.transcript)
                     .await?;
+
+                let message = TranscriptMessage {
+                    speaker: Speaker::User,
+                    text: text.to_string(),
+                };
+
+                self.state
+                    .transcript
+                    .push(TranscriptLine::TranscriptMessage(message));
             }
             AppEvent::LLMMessageStarted => {
                 self.state.is_llm_message_running = true;
@@ -132,6 +141,18 @@ impl App {
             AppEvent::LLMMessageCompleted(text) => {
                 self.state.is_llm_message_running = false;
                 self.elevenlabs.synthesize(text).await?;
+
+                let message = TranscriptMessage {
+                    speaker: Speaker::Assistant,
+                    text: text.to_string(),
+                };
+
+                self.state
+                    .transcript
+                    .push(TranscriptLine::TranscriptMessage(message));
+            }
+            AppEvent::TTSStarted => {
+                self.state.is_tts_running = true;
             }
             AppEvent::TTSCompleted(result) => {
                 self.audio_player
@@ -228,15 +249,9 @@ impl App {
     }
 
     async fn toggle_recording(&mut self) -> Result<(), anyhow::Error> {
-        if self.state.is_audio_transcription_running || self.state.is_llm_message_running {
-            return Ok(());
-        }
-
         if self.audio_recorder.is_recording() {
-            dbg!("stopping audio recording");
             self.audio_recorder.stop().await?;
         } else {
-            dbg!("starting audio recording");
             self.audio_recorder.start().await?;
         }
 

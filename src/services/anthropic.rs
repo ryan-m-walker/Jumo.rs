@@ -196,10 +196,11 @@ impl AnthropicService {
                     let stream_event: Result<StreamEvent, _> = serde_json::from_str(&event.data);
 
                     match stream_event {
-                        Ok(StreamEvent::ContentBlockDelta { delta, .. }) => {
-                            if let Delta::TextDelta { text } = delta {
-                                buffer.push_str(&text);
-                            }
+                        Ok(StreamEvent::ContentBlockDelta {
+                            delta: Delta::TextDelta { text },
+                            ..
+                        }) => {
+                            buffer.push_str(&text);
                         }
                         Ok(StreamEvent::MessageStop) => {
                             break;
