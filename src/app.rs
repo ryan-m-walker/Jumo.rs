@@ -160,7 +160,7 @@ impl App {
 
     fn render(&mut self) -> Result<(), anyhow::Error> {
         self.terminal
-            .draw(|frame| frame.render_widget(AppWidget::new(&self.state), frame.area()));
+            .draw(|frame| frame.render_widget(AppWidget::new(&self.state), frame.area()))?;
         Ok(())
     }
 
