@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     events::AppEvent,
+    prompts::system::SYSTEM_PROMPT,
     state::{Speaker, TranscriptLine},
 };
 
@@ -27,6 +28,7 @@ struct ClaudeInput {
     max_tokens: u32,
     messages: Vec<ClaudeMessage>,
     stream: bool,
+    system: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -170,6 +172,7 @@ impl AnthropicService {
             max_tokens: 1024,
             messages,
             stream: true,
+            system: Some(SYSTEM_PROMPT.to_string()),
         };
 
         let mut stream = self
