@@ -1,6 +1,12 @@
 use std::{io::Stdout, time::Duration};
 
+use cpal::{
+    SampleRate, StreamConfig,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
+use eventsource_stream::Eventsource;
+use futures::SinkExt;
 use futures_util::StreamExt;
 use ratatui::{
     Terminal,
@@ -14,7 +20,12 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempPath;
 use throbber_widgets_tui::ThrobberState;
 use tokio::{fs::File, io::AsyncReadExt, sync::mpsc};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{Message, client::IntoClientRequest},
+};
 
+use crate::claude_types::{Delta, StreamEvent};
 use crate::recorder::AudioRecorder;
 
 #[derive(Debug, Clone)]
@@ -30,11 +41,18 @@ enum AppEvent {
     LLMMessageStarted,
     LLMMessageCompleted,
     TranscriptMessage((Speaker, String)),
+    TranscriptError(TranscriptError),
 }
 
 #[derive(Debug, Deserialize, Clone)]
 struct ElevenLabsTranscription {
     text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ElevenLabsSendTextMessage {
+    text: String,
+    model_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,6 +66,7 @@ struct ClaudeInput {
     model: String,
     max_tokens: u32,
     messages: Vec<ClaudeMessage>,
+    stream: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -157,6 +176,12 @@ impl App {
             }
             AppEvent::LLMMessageCompleted => {
                 self.is_llm_message_running = false;
+            }
+            AppEvent::TranscriptError(error) => {
+                self.transcript
+                    .push(TranscriptLine::TranscriptError(TranscriptError {
+                        text: error.text.clone(),
+                    }));
             }
         }
 
@@ -276,6 +301,30 @@ impl App {
         let sender = self.app_event_sender.clone();
         let transcript = self.transcript.clone();
 
+        // let (ws_tx, mut ws_rx) = mpsc::channel(100);
+        // let elevenlabs_api_key_clone = elevenlabs_api_key.clone();
+        //
+        // tokio::spawn(async move {
+        //     let mut request =
+        //         "wss://api.elevenlabs.io/v1/text-to-speech/GfVVOQdZ5Fsz9QBNYFie/stream-input"
+        //             .into_client_request()
+        //             .unwrap();
+        //     request
+        //         .headers_mut()
+        //         .insert("api-key", elevenlabs_api_key_clone.parse().unwrap());
+        //
+        //     let (ws_stream, _) = connect_async(request).await.unwrap();
+        //     let (mut write, read) = ws_stream.split();
+        //
+        //     while let Some(ev) = ws_rx.recv().await {
+        //         let body = ElevenLabsSendTextMessage { text: ev };
+        //         let json_str = serde_json::to_string(&body)?;
+        //         write.send(Message::Text(json_str.into())).await?;
+        //     }
+        //
+        //     Ok::<(), anyhow::Error>(())
+        // });
+
         tokio::spawn(async move {
             sender.send(AppEvent::AudioTranscriptionStarted).await?;
 
@@ -294,7 +343,7 @@ impl App {
             let client = reqwest::Client::new();
             let eleven_labs_resp = client
                 .post("https://api.elevenlabs.io/v1/speech-to-text")
-                .header("xi-api-key", elevenlabs_api_key)
+                .header("xi-api-key", &elevenlabs_api_key)
                 .multipart(form)
                 .send()
                 .await?
@@ -333,27 +382,137 @@ impl App {
                 model: String::from("claude-sonnet-4-20250514"),
                 max_tokens: 1024,
                 messages,
+                stream: true,
             };
 
-            let claude_resp = client
+            let mut claude_stream = client
                 .post("https://api.anthropic.com/v1/messages")
-                .header("x-api-key", anthropic_api_key)
+                .header("x-api-key", &anthropic_api_key)
                 .header("anthropic-version", "2023-06-01")
                 .header("content-type", "application/json")
                 .json(&body)
                 .send()
                 .await?
-                .json::<ClaudeResponse>()
-                .await?;
+                .bytes_stream()
+                .eventsource();
+
+            let mut buffer = String::new();
+
+            while let Some(event) = claude_stream.next().await {
+                match event {
+                    Ok(event) => {
+                        if event.data.is_empty() {
+                            continue;
+                        }
+
+                        let stream_event: Result<StreamEvent, _> =
+                            serde_json::from_str(&event.data);
+
+                        match stream_event {
+                            Ok(StreamEvent::ContentBlockDelta { delta, .. }) => {
+                                if let Delta::TextDelta { text } = delta {
+                                    buffer.push_str(&text);
+                                }
+                            }
+                            Ok(StreamEvent::MessageStop) => {
+                                break;
+                            }
+                            Ok(StreamEvent::Error { error }) => {
+                                sender
+                                    .send(AppEvent::TranscriptError(TranscriptError {
+                                        text: error.message,
+                                    }))
+                                    .await?;
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(err) => {
+                        sender
+                            .send(AppEvent::TranscriptError(TranscriptError {
+                                text: err.to_string(),
+                            }))
+                            .await?;
+                    }
+                }
+            }
 
             sender
                 .send(AppEvent::TranscriptMessage((
                     Speaker::Robot,
-                    claude_resp.content[0].text.clone(),
+                    buffer.clone(),
                 )))
                 .await?;
-
             sender.send(AppEvent::LLMMessageCompleted).await?;
+
+            let body = ElevenLabsSendTextMessage {
+                text: buffer,
+                model_id: String::from("eleven_multilingual_v2"),
+            };
+
+            let voice_id = "Fahco4VZzobUeiPqni1S";
+            let url = format!(
+                "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=pcm_44100"
+            );
+
+            let speech_resp = client
+                .post(url)
+                .header("xi-api-key", &elevenlabs_api_key)
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await?;
+
+            if let Some(content_type) = speech_resp.headers().get("content-type") {
+                // TODO: error handling
+            }
+
+            let audio_bytes = speech_resp.bytes().await?;
+
+            let bytes_per_sample = 2; // 16-bit = 2 bytes
+            let channels = 1;
+            let sample_rate = 44100;
+            let duration_seconds =
+                audio_bytes.len() as f64 / (bytes_per_sample * channels * sample_rate) as f64;
+
+
+            let host = cpal::default_host();
+            let device = host.default_output_device().expect("No output device");
+
+            let config = StreamConfig {
+                channels: 1,
+                sample_rate: SampleRate(44100),
+                buffer_size: cpal::BufferSize::Default,
+            };
+
+            let samples: Vec<f32> = audio_bytes
+                .chunks_exact(2)
+                .map(|chunk| {
+                    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+                    sample as f32 / i16::MAX as f32
+                })
+                .collect();
+
+            let mut sample_index = 0;
+            let samples_clone = samples.clone();
+
+            let stream = device.build_output_stream(
+                &config,
+                move |data: &mut [f32], _| {
+                    for sample in data {
+                        *sample = samples_clone.get(sample_index).copied().unwrap_or(0.0);
+                        sample_index += 1;
+                    }
+                },
+                move |err| {
+                    eprintln!("an error occurred on stream: {}", err);
+                },
+                None,
+            )?;
+
+            stream.play()?;
+            std::thread::sleep(std::time::Duration::from_secs_f64(duration_seconds + 0.5));
 
             Ok::<(), anyhow::Error>(())
         });
