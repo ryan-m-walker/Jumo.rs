@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::bounded;
 use hound::{WavSpec, WavWriter};
-use tempfile::{NamedTempFile, TempPath};
+use tempfile::NamedTempFile;
 use tokio::sync::mpsc;
 
 use crate::events::AppEvent;

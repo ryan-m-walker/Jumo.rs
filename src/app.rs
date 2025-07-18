@@ -87,9 +87,6 @@ impl App {
             }
             AppEvent::TranscriptionCompleted(text) => {
                 self.state.is_audio_transcription_running = false;
-                self.anthropic
-                    .send_message(text, &self.state.transcript)
-                    .await?;
 
                 let message = TranscriptMessage {
                     speaker: Speaker::User,
@@ -99,6 +96,10 @@ impl App {
                 self.state
                     .transcript
                     .push(TranscriptLine::TranscriptMessage(message));
+
+                self.anthropic
+                    .send_message(text, &self.state.transcript)
+                    .await?;
             }
             AppEvent::TranscriptionFailed(error) => {
                 self.state.error = Some(error.to_string());
@@ -109,7 +110,6 @@ impl App {
             }
             AppEvent::LLMMessageCompleted(text) => {
                 self.state.is_llm_message_running = false;
-                self.elevenlabs.synthesize(text).await?;
 
                 let message = TranscriptMessage {
                     speaker: Speaker::Assistant,
@@ -119,6 +119,8 @@ impl App {
                 self.state
                     .transcript
                     .push(TranscriptLine::TranscriptMessage(message));
+
+                self.elevenlabs.synthesize(text).await?;
             }
             AppEvent::LLMRequestFailed(error) => {
                 self.state.error = Some(error.to_string());
