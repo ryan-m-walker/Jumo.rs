@@ -7,8 +7,8 @@ use ratatui::{Terminal, prelude::CrosstermBackend};
 use crate::{
     audio::player::AudioPlayer,
     events::EventBus,
-    renderer::Renderer,
     state::{Speaker, TranscriptLine, TranscriptMessage},
+    widgets::app::AppWidget,
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
 use crate::{
@@ -23,7 +23,6 @@ pub struct App {
     audio_recorder: AudioRecorder,
     audio_player: AudioPlayer,
     terminal: Terminal<CrosstermBackend<Stdout>>,
-    renderer: Renderer,
     state: AppState,
 }
 
@@ -44,7 +43,6 @@ impl App {
             audio_recorder,
             audio_player,
             terminal: ratatui::init(),
-            renderer: Renderer::new(),
             state: AppState::default(),
         }
     }
@@ -162,7 +160,7 @@ impl App {
 
     fn render(&mut self) -> Result<(), anyhow::Error> {
         self.terminal
-            .draw(|frame| self.renderer.render(frame, &self.state))?;
+            .draw(|frame| frame.render_widget(AppWidget::new(&self.state), frame.area()));
         Ok(())
     }
 

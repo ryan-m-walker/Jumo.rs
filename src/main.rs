@@ -4,9 +4,9 @@ mod app;
 mod audio;
 mod events;
 mod prompts;
-mod renderer;
 mod services;
 mod state;
+mod widgets;
 
 #[tokio::main]
 async fn main() {

@@ -1,25 +1,29 @@
 use ratatui::{
-    Frame,
-    layout::{Alignment, Constraint, Direction, Layout},
+    buffer::Buffer,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::Line,
-    widgets::{Block, BorderType, Paragraph, Wrap},
+    widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
 use crate::state::{AppState, Speaker, TranscriptLine};
 
-pub struct Renderer {}
+pub struct AppWidget<'a> {
+    state: &'a AppState,
+}
 
-impl Renderer {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> AppWidget<'a> {
+    pub fn new(state: &'a AppState) -> Self {
+        Self { state }
     }
+}
 
-    pub fn render(&self, frame: &mut Frame, state: &AppState) {
+impl Widget for AppWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Fill(1)].as_ref())
-            .split(frame.area());
+            .split(area);
 
         let title = Line::from(" Transcript ".bold());
         let block = Block::bordered()
@@ -27,11 +31,11 @@ impl Renderer {
             .border_style(Style::new().yellow())
             .border_type(BorderType::Rounded);
 
-        let header_text = if state.is_audio_recording_running {
+        let header_text = if self.state.is_audio_recording_running {
             "Recording audio..."
-        } else if state.is_audio_transcription_running {
+        } else if self.state.is_audio_transcription_running {
             "Transcribing audio..."
-        } else if state.is_llm_message_running {
+        } else if self.state.is_llm_message_running {
             "Sending message to LLM..."
         } else {
             "Press space to start recording audio..."
@@ -45,7 +49,7 @@ impl Renderer {
 
         let mut lines = vec![];
 
-        for line in state.transcript.iter() {
+        for line in self.state.transcript.iter() {
             match line {
                 TranscriptLine::TranscriptMessage(line) => {
                     match line.speaker {
@@ -70,7 +74,7 @@ impl Renderer {
             .wrap(Wrap { trim: true })
             .block(block);
 
-        frame.render_widget(header, chunks[0]);
-        frame.render_widget(transcript, chunks[1]);
+        header.render(chunks[0], buf);
+        transcript.render(chunks[1], buf);
     }
 }
