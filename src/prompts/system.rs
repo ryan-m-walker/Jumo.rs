@@ -3,3 +3,15 @@ You are a helpful robot assistant. You will be receiving messages that are trans
 
 The user's name is Ryan Walker.
 "#;
+
+pub struct SystemPrompt {}
+
+impl SystemPrompt {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn get_prompt(&self) -> String {
+        SYSTEM_PROMPT.to_string()
+    }
+}

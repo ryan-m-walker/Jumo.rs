@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     events::AppEvent,
-    prompts::system::SYSTEM_PROMPT,
+    prompts::system::{SYSTEM_PROMPT, SystemPrompt},
     state::{Speaker, TranscriptLine},
 };
 
@@ -167,12 +167,14 @@ impl AnthropicService {
             content: message.to_string(),
         });
 
+        let system = SystemPrompt::new().get_prompt();
+
         let body = ClaudeInput {
             model: String::from("claude-sonnet-4-20250514"),
             max_tokens: 1024,
             messages,
             stream: true,
-            system: Some(SYSTEM_PROMPT.to_string()),
+            system: Some(system),
         };
 
         let mut stream = self
