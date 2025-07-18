@@ -29,6 +29,7 @@ pub struct AppState {
     pub is_audio_transcription_running: bool,
     pub is_llm_message_running: bool,
     pub is_tts_running: bool,
+    pub is_audio_recording_running: bool,
 }
 
 impl AppState {
@@ -40,6 +41,7 @@ impl AppState {
             is_audio_transcription_running: false,
             is_llm_message_running: false,
             is_tts_running: false,
+            is_audio_recording_running: false,
         }
     }
 }

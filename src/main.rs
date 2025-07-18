@@ -3,6 +3,7 @@ use crate::app::App;
 mod app;
 mod audio;
 mod events;
+mod renderer;
 mod services;
 mod state;
 

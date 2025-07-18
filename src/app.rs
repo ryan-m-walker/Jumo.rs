@@ -2,19 +2,12 @@ use std::{io::Stdout, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
-use ratatui::{
-    Terminal,
-    layout::{Alignment, Constraint, Direction, Layout},
-    prelude::CrosstermBackend,
-    style::{Style, Stylize},
-    text::Line,
-    widgets::{Block, BorderType, Paragraph, Wrap},
-};
-use serde::{Deserialize, Serialize};
+use ratatui::{Terminal, prelude::CrosstermBackend};
 
 use crate::{
     audio::player::AudioPlayer,
     events::EventBus,
+    renderer::Renderer,
     state::{Speaker, TranscriptLine, TranscriptMessage},
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
@@ -23,42 +16,6 @@ use crate::{
     state::AppState,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ElevenLabsSendTextMessage {
-    text: String,
-    model_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ClaudeMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ClaudeInput {
-    model: String,
-    max_tokens: u32,
-    messages: Vec<ClaudeMessage>,
-    stream: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ClaudeResponseMessage {
-    #[serde(rename = "type")]
-    message_type: String,
-    text: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ClaudeResponse {
-    id: String,
-    #[serde(rename = "type")]
-    message_type: String,
-    role: String,
-    content: Vec<ClaudeResponseMessage>,
-}
-
 pub struct App {
     event_bus: EventBus,
     anthropic: AnthropicService,
@@ -66,6 +23,7 @@ pub struct App {
     audio_recorder: AudioRecorder,
     audio_player: AudioPlayer,
     terminal: Terminal<CrosstermBackend<Stdout>>,
+    renderer: Renderer,
     state: AppState,
 }
 
@@ -86,6 +44,7 @@ impl App {
             audio_recorder,
             audio_player,
             terminal: ratatui::init(),
+            renderer: Renderer::new(),
             state: AppState::default(),
         }
     }
@@ -112,10 +71,16 @@ impl App {
     async fn handle_app_event(&mut self, event: &AppEvent) -> Result<(), anyhow::Error> {
         match event {
             AppEvent::AudioRecordingStarted => {
+                self.state.is_audio_recording_running = true;
                 self.state.is_audio_transcription_running = true;
             }
             AppEvent::AudioRecordingCompleted(temp_path) => {
+                self.state.is_audio_recording_running = false;
                 self.elevenlabs.transcribe(temp_path).await?;
+            }
+            AppEvent::AudioRecordingFailed(error) => {
+                self.state.error = Some(error.to_string());
+                self.state.is_audio_recording_running = false;
             }
             AppEvent::TranscriptionStarted => {
                 self.state.is_audio_transcription_running = true;
@@ -135,6 +100,10 @@ impl App {
                     .transcript
                     .push(TranscriptLine::TranscriptMessage(message));
             }
+            AppEvent::TranscriptionFailed(error) => {
+                self.state.error = Some(error.to_string());
+                self.state.is_audio_transcription_running = false;
+            }
             AppEvent::LLMMessageStarted => {
                 self.state.is_llm_message_running = true;
             }
@@ -151,6 +120,10 @@ impl App {
                     .transcript
                     .push(TranscriptLine::TranscriptMessage(message));
             }
+            AppEvent::LLMRequestFailed(error) => {
+                self.state.error = Some(error.to_string());
+                self.state.is_llm_message_running = false;
+            }
             AppEvent::TTSStarted => {
                 self.state.is_tts_running = true;
             }
@@ -158,8 +131,12 @@ impl App {
                 self.audio_player
                     .play(&result.audio_bytes, result.duration_seconds)?;
             }
+            AppEvent::TTSFailed(error) => {
+                self.state.error = Some(error.to_string());
+                self.state.is_tts_running = false;
+            }
             _ => {
-                panic!("Unhandled app event: {:?}", event);
+                // TODO: handle other events
             }
         }
 
@@ -182,65 +159,68 @@ impl App {
     }
 
     fn render(&mut self) -> Result<(), anyhow::Error> {
-        self.terminal.draw(|frame| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Fill(1)].as_ref())
-                .split(frame.area());
+        self.terminal
+            .draw(|frame| self.renderer.render(frame, &self.state))?;
 
-            let title = Line::from(" Transcript ".bold());
-            let block = Block::bordered()
-                .title(title.centered())
-                .border_style(Style::new().yellow())
-                .border_type(BorderType::Rounded);
-
-            let header_text = if self.audio_recorder.is_recording() {
-                "Recording audio..."
-            } else if self.state.is_audio_transcription_running {
-                "Transcribing audio..."
-            } else if self.state.is_llm_message_running {
-                "Sending message to LLM..."
-            } else {
-                "Press space to start recording audio..."
-            };
-
-            let header = Paragraph::new(header_text).style(Style::new().dim()).block(
-                Block::bordered()
-                    .border_style(Style::new().yellow())
-                    .border_type(BorderType::Rounded),
-            );
-
-            let mut lines = vec![];
-
-            for line in self.state.transcript.iter() {
-                match line {
-                    TranscriptLine::TranscriptMessage(line) => {
-                        match line.speaker {
-                            Speaker::User => {
-                                lines.push(Line::from("[User]:").style(Style::new().yellow()));
-                            }
-                            Speaker::Assistant => {
-                                lines.push(Line::from("[Claude]:").style(Style::new().red()));
-                            }
-                        }
-
-                        lines.push(Line::from(line.text.clone()));
-                    }
-                    TranscriptLine::TranscriptError(line) => {
-                        lines.push(Line::from(line.text.clone()));
-                    }
-                }
-            }
-
-            let transcript = Paragraph::new(lines)
-                .alignment(Alignment::Left)
-                .wrap(Wrap { trim: true })
-                .block(block);
-
-            frame.render_widget(header, chunks[0]);
-            frame.render_widget(transcript, chunks[1]);
-        })?;
-
+        //     self.terminal.draw(|frame| {
+        //         let chunks = Layout::default()
+        //             .direction(Direction::Vertical)
+        //             .constraints([Constraint::Length(3), Constraint::Fill(1)].as_ref())
+        //             .split(frame.area());
+        //
+        //         let title = Line::from(" Transcript ".bold());
+        //         let block = Block::bordered()
+        //             .title(title.centered())
+        //             .border_style(Style::new().yellow())
+        //             .border_type(BorderType::Rounded);
+        //
+        //         let header_text = if self.audio_recorder.is_recording() {
+        //             "Recording audio..."
+        //         } else if self.state.is_audio_transcription_running {
+        //             "Transcribing audio..."
+        //         } else if self.state.is_llm_message_running {
+        //             "Sending message to LLM..."
+        //         } else {
+        //             "Press space to start recording audio..."
+        //         };
+        //
+        //         let header = Paragraph::new(header_text).style(Style::new().dim()).block(
+        //             Block::bordered()
+        //                 .border_style(Style::new().yellow())
+        //                 .border_type(BorderType::Rounded),
+        //         );
+        //
+        //         let mut lines = vec![];
+        //
+        //         for line in self.state.transcript.iter() {
+        //             match line {
+        //                 TranscriptLine::TranscriptMessage(line) => {
+        //                     match line.speaker {
+        //                         Speaker::User => {
+        //                             lines.push(Line::from("[User]:").style(Style::new().yellow()));
+        //                         }
+        //                         Speaker::Assistant => {
+        //                             lines.push(Line::from("[Claude]:").style(Style::new().red()));
+        //                         }
+        //                     }
+        //
+        //                     lines.push(Line::from(line.text.clone()));
+        //                 }
+        //                 TranscriptLine::TranscriptError(line) => {
+        //                     lines.push(Line::from(line.text.clone()));
+        //                 }
+        //             }
+        //         }
+        //
+        //         let transcript = Paragraph::new(lines)
+        //             .alignment(Alignment::Left)
+        //             .wrap(Wrap { trim: true })
+        //             .block(block);
+        //
+        //         frame.render_widget(header, chunks[0]);
+        //         frame.render_widget(transcript, chunks[1]);
+        //     })?;
+        //
         Ok(())
     }
 
