@@ -4,14 +4,15 @@ use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{
     Terminal,
-    layout::Alignment,
+    layout::{Alignment, Constraint, Direction, Layout},
     prelude::CrosstermBackend,
     style::{Style, Stylize},
     text::Line,
-    widgets::{Block, BorderType, Paragraph},
+    widgets::{Block, BorderType, Paragraph, Wrap},
 };
 use serde::{Deserialize, Serialize};
 use tempfile::TempPath;
+use throbber_widgets_tui::ThrobberState;
 use tokio::{fs::File, io::AsyncReadExt, sync::mpsc};
 
 use crate::recorder::AudioRecorder;
@@ -24,7 +25,11 @@ enum Speaker {
 
 #[derive(Debug, Clone)]
 enum AppEvent {
-    AudioTranscript((Speaker, String)),
+    AudioTranscriptionStarted,
+    AudioTranscriptionCompleted,
+    LLMMessageStarted,
+    LLMMessageCompleted,
+    TranscriptMessage((Speaker, String)),
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -61,10 +66,21 @@ struct ClaudeResponse {
     content: Vec<ClaudeResponseMessage>,
 }
 
-#[derive(Debug)]
-struct TranscriptLine {
+#[derive(Debug, Clone)]
+struct TranscriptMessage {
     speaker: Speaker,
     text: String,
+}
+
+#[derive(Debug, Clone)]
+struct TranscriptError {
+    text: String,
+}
+
+#[derive(Debug, Clone)]
+enum TranscriptLine {
+    TranscriptMessage(TranscriptMessage),
+    TranscriptError(TranscriptError),
 }
 
 pub struct App {
@@ -74,6 +90,10 @@ pub struct App {
     transcript: Vec<TranscriptLine>,
     app_event_sender: mpsc::Sender<AppEvent>,
     app_event_receiver: mpsc::Receiver<AppEvent>,
+
+    is_audio_transcription_running: bool,
+    is_llm_message_running: bool,
+    throbber_state: ThrobberState,
 }
 
 const FRAMES_PER_SECOND: f32 = 60.0;
@@ -85,10 +105,14 @@ impl App {
         Self {
             terminal: ratatui::init(),
             audio_recorder: AudioRecorder::new(),
-            is_app_running: false,
-            transcript: Vec::new(),
             app_event_sender,
             app_event_receiver,
+
+            transcript: Vec::new(),
+            is_app_running: false,
+            is_audio_transcription_running: false,
+            is_llm_message_running: false,
+            throbber_state: ThrobberState::default(),
         }
     }
 
@@ -100,6 +124,8 @@ impl App {
         let mut events = EventStream::new();
 
         while self.is_app_running {
+            // self.throbber_state.calc_next();
+
             tokio::select! {
                 _ = interval.tick() => self.render()?,
                 Some(Ok(event)) = events.next() => self.handle_terminal_event(&event)?,
@@ -113,10 +139,25 @@ impl App {
 
     fn handle_app_event(&mut self, event: &AppEvent) -> Result<(), anyhow::Error> {
         match event {
-            AppEvent::AudioTranscript((speaker, text)) => self.transcript.push(TranscriptLine {
-                speaker: speaker.clone(),
-                text: text.clone(),
-            }),
+            AppEvent::TranscriptMessage((speaker, text)) => {
+                self.transcript
+                    .push(TranscriptLine::TranscriptMessage(TranscriptMessage {
+                        speaker: speaker.clone(),
+                        text: text.clone(),
+                    }))
+            }
+            AppEvent::AudioTranscriptionStarted => {
+                self.is_audio_transcription_running = true;
+            }
+            AppEvent::AudioTranscriptionCompleted => {
+                self.is_audio_transcription_running = false;
+            }
+            AppEvent::LLMMessageStarted => {
+                self.is_llm_message_running = true;
+            }
+            AppEvent::LLMMessageCompleted => {
+                self.is_llm_message_running = false;
+            }
         }
 
         Ok(())
@@ -138,39 +179,64 @@ impl App {
     }
 
     fn render(&mut self) -> Result<(), anyhow::Error> {
-        let header = if self.audio_recorder.is_recording() {
-            "Recording audio..."
-        } else {
-            "Press space to start recording audio..."
-        };
+        self.terminal.draw(|frame| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Fill(1)].as_ref())
+                .split(frame.area());
 
-        let title = Line::from(" Robo RS ".bold());
-        let block = Block::bordered()
-            .title(title.centered())
-            .border_style(Style::new().yellow())
-            .border_type(BorderType::Rounded);
+            let title = Line::from(" Transcript ".bold());
+            let block = Block::bordered()
+                .title(title.centered())
+                .border_style(Style::new().yellow())
+                .border_type(BorderType::Rounded);
 
-        let mut lines = vec![Line::from(header), Line::from("---")];
+            let header_text = if self.audio_recorder.is_recording() {
+                "Recording audio..."
+            } else if self.is_audio_transcription_running {
+                "Transcribing audio..."
+            } else if self.is_llm_message_running {
+                "Sending message to LLM..."
+            } else {
+                "Press space to start recording audio..."
+            };
 
-        for line in self.transcript.iter() {
-            match line.speaker {
-                Speaker::User => {
-                    lines.push(Line::from("[User]:").style(Style::new().yellow()));
-                }
-                Speaker::Robot => {
-                    lines.push(Line::from("[Claude]:").style(Style::new().red()));
+            let header = Paragraph::new(header_text).style(Style::new().dim()).block(
+                Block::bordered()
+                    .border_style(Style::new().yellow())
+                    .border_type(BorderType::Rounded),
+            );
+
+            // let mut lines = vec![Line::from(header), Line::from("---")];
+            let mut lines = vec![];
+
+            for line in self.transcript.iter() {
+                match line {
+                    TranscriptLine::TranscriptMessage(line) => {
+                        match line.speaker {
+                            Speaker::User => {
+                                lines.push(Line::from("[User]:").style(Style::new().yellow()));
+                            }
+                            Speaker::Robot => {
+                                lines.push(Line::from("[Claude]:").style(Style::new().red()));
+                            }
+                        }
+
+                        lines.push(Line::from(line.text.clone()));
+                    }
+                    TranscriptLine::TranscriptError(line) => {
+                        lines.push(Line::from(line.text.clone()));
+                    }
                 }
             }
 
-            lines.push(Line::from(line.text.clone()));
-        }
+            let transcript = Paragraph::new(lines)
+                .alignment(Alignment::Left)
+                .wrap(Wrap { trim: true })
+                .block(block);
 
-        let transcript = Paragraph::new(lines)
-            .alignment(Alignment::Left)
-            .block(block);
-
-        self.terminal.draw(|frame| {
-            frame.render_widget(transcript, frame.area());
+            frame.render_widget(header, chunks[0]);
+            frame.render_widget(transcript, chunks[1]);
         })?;
 
         Ok(())
@@ -181,6 +247,10 @@ impl App {
     }
 
     fn toggle_recording(&mut self) -> Result<(), anyhow::Error> {
+        if self.is_audio_transcription_running || self.is_llm_message_running {
+            return Ok(());
+        }
+
         if self.audio_recorder.is_recording() {
             let temp_path = self.audio_recorder.stop()?;
             self.transcribe_audio(temp_path)?;
@@ -204,8 +274,11 @@ impl App {
         };
 
         let sender = self.app_event_sender.clone();
+        let transcript = self.transcript.clone();
 
         tokio::spawn(async move {
+            sender.send(AppEvent::AudioTranscriptionStarted).await?;
+
             let mut file = File::open(&temp_path).await?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer).await?;
@@ -228,21 +301,38 @@ impl App {
                 .json::<ElevenLabsTranscription>()
                 .await?;
 
-            dbg!(&eleven_labs_resp);
-
             let text = eleven_labs_resp.text;
 
             sender
-                .send(AppEvent::AudioTranscript((Speaker::User, text.clone())))
+                .send(AppEvent::TranscriptMessage((Speaker::User, text.clone())))
                 .await?;
+            sender.send(AppEvent::AudioTranscriptionCompleted).await?;
+
+            sender.send(AppEvent::LLMMessageStarted).await?;
+
+            let mut messages = vec![];
+
+            for line in transcript.iter() {
+                if let TranscriptLine::TranscriptMessage(line) = line {
+                    messages.push(ClaudeMessage {
+                        role: match line.speaker {
+                            Speaker::User => "user".to_string(),
+                            Speaker::Robot => "assistant".to_string(),
+                        },
+                        content: line.text.clone(),
+                    });
+                }
+            }
+
+            messages.push(ClaudeMessage {
+                role: "user".to_string(),
+                content: text,
+            });
 
             let body = ClaudeInput {
                 model: String::from("claude-sonnet-4-20250514"),
                 max_tokens: 1024,
-                messages: vec![ClaudeMessage {
-                    role: String::from("user"),
-                    content: text,
-                }],
+                messages,
             };
 
             let claude_resp = client
@@ -257,11 +347,13 @@ impl App {
                 .await?;
 
             sender
-                .send(AppEvent::AudioTranscript((
+                .send(AppEvent::TranscriptMessage((
                     Speaker::Robot,
                     claude_resp.content[0].text.clone(),
                 )))
                 .await?;
+
+            sender.send(AppEvent::LLMMessageCompleted).await?;
 
             Ok::<(), anyhow::Error>(())
         });

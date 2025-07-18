@@ -6,7 +6,6 @@ use tempfile::{NamedTempFile, TempPath};
 
 pub struct AudioRecorder {
     input_stream: Option<cpal::Stream>,
-    is_recording: bool,
     temp_file: Option<NamedTempFile>,
     sample_rate: u32,
     channels: u16,
@@ -16,7 +15,6 @@ impl AudioRecorder {
     pub fn new() -> Self {
         Self {
             input_stream: None,
-            is_recording: false,
             temp_file: None,
             sample_rate: 0,
             channels: 0,
@@ -24,6 +22,10 @@ impl AudioRecorder {
     }
 
     pub fn record(&mut self) -> Result<(), anyhow::Error> {
+        if self.input_stream.is_some() {
+            return Ok(());
+        }
+
         let (tx, rx) = bounded(50);
 
         let temp_file = NamedTempFile::new()?;
@@ -65,7 +67,6 @@ impl AudioRecorder {
         let sample_rate = self.sample_rate;
 
         stream.play()?;
-        self.is_recording = true;
 
         tokio::spawn(async move {
             let spec = WavSpec {
@@ -96,7 +97,7 @@ impl AudioRecorder {
             stream.pause()?;
         }
 
-        self.is_recording = false;
+        self.input_stream = None;
 
         let temp_file = self.temp_file.take().unwrap();
         let path = temp_file.into_temp_path();
@@ -105,6 +106,6 @@ impl AudioRecorder {
     }
 
     pub fn is_recording(&self) -> bool {
-        self.is_recording
+        self.input_stream.is_some()
     }
 }
