@@ -2,7 +2,10 @@ use cpal::{
     BufferSize, SampleRate, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use tokio::sync::mpsc;
+use tokio::{
+    sync::mpsc,
+    time::{self, sleep},
+};
 use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::events::AppEvent;
@@ -16,7 +19,15 @@ impl AudioPlayer {
         Self { event_sender }
     }
 
-    pub fn play(&self, audio_bytes: &Bytes, duration_seconds: f64) -> Result<(), anyhow::Error> {
+    pub async fn play(
+        &self,
+        audio_bytes: &Bytes,
+        duration_seconds: f64,
+    ) -> Result<(), anyhow::Error> {
+        self.event_sender
+            .send(AppEvent::AudioPlaybackStarted)
+            .await?;
+
         let host = cpal::default_host();
         let device = host.default_output_device().unwrap();
 
@@ -52,7 +63,11 @@ impl AudioPlayer {
         )?;
 
         stream.play()?;
-        std::thread::sleep(std::time::Duration::from_secs_f64(duration_seconds + 0.5));
+        time::sleep(std::time::Duration::from_secs_f64(duration_seconds + 0.5)).await;
+
+        self.event_sender
+            .send(AppEvent::AudioPlaybackCompleted)
+            .await?;
 
         Ok::<(), anyhow::Error>(())
     }

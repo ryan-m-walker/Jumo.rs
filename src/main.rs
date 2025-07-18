@@ -6,6 +6,7 @@ mod events;
 mod prompts;
 mod services;
 mod state;
+mod tools;
 mod widgets;
 
 #[tokio::main]

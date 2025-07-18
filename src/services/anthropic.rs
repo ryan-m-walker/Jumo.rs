@@ -2,10 +2,11 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 use crate::{
-    events::AppEvent,
-    prompts::system::{SYSTEM_PROMPT, SystemPrompt},
+    events::{AppEvent, LLMDelta},
+    prompts::system::SystemPrompt,
     state::{Speaker, TranscriptLine},
 };
 
@@ -146,7 +147,10 @@ impl AnthropicService {
         message: &str,
         transcript: &[TranscriptLine],
     ) -> Result<(), anyhow::Error> {
-        self.event_sender.send(AppEvent::LLMMessageStarted).await?;
+        let message_id = Uuid::new_v4().to_string();
+        self.event_sender
+            .send(AppEvent::LLMMessageStarted(message_id.clone()))
+            .await?;
 
         let mut messages = vec![];
 
@@ -189,8 +193,6 @@ impl AnthropicService {
             .bytes_stream()
             .eventsource();
 
-        let mut buffer = String::new();
-
         while let Some(event) = stream.next().await {
             match event {
                 Ok(event) => {
@@ -205,7 +207,14 @@ impl AnthropicService {
                             delta: Delta::TextDelta { text },
                             ..
                         }) => {
-                            buffer.push_str(&text);
+                            let delta = LLMDelta {
+                                id: message_id.clone(),
+                                text: text.to_string(),
+                            };
+
+                            self.event_sender
+                                .send(AppEvent::LLMTextDelta(delta))
+                                .await?;
                         }
                         Ok(StreamEvent::MessageStop) => {
                             break;
@@ -228,7 +237,7 @@ impl AnthropicService {
         }
 
         self.event_sender
-            .send(AppEvent::LLMMessageCompleted(buffer))
+            .send(AppEvent::LLMMessageCompleted(message_id))
             .await?;
 
         Ok(())

@@ -8,17 +8,17 @@ use ratatui::{
 
 use crate::state::{AppState, Speaker, TranscriptLine};
 
-pub struct AppWidget<'a> {
+pub struct MainWidget<'a> {
     state: &'a AppState,
 }
 
-impl<'a> AppWidget<'a> {
+impl<'a> MainWidget<'a> {
     pub fn new(state: &'a AppState) -> Self {
         Self { state }
     }
 }
 
-impl Widget for AppWidget<'_> {
+impl Widget for MainWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -37,6 +37,8 @@ impl Widget for AppWidget<'_> {
             "Transcribing audio..."
         } else if self.state.is_llm_message_running {
             "Sending message to LLM..."
+        } else if self.state.is_tts_running {
+            "Generating audio..."
         } else {
             "Press space to start recording audio..."
         };

@@ -10,6 +10,12 @@ pub struct TTSResult {
     pub duration_seconds: f64,
 }
 
+#[derive(Debug, Clone)]
+pub struct LLMDelta {
+    pub id: String,
+    pub text: String,
+}
+
 #[derive(Debug)]
 pub enum AppEvent {
     // Audio events
@@ -18,6 +24,7 @@ pub enum AppEvent {
     AudioRecordingFailed(String),
 
     AudioPlaybackStarted,
+    AudioPlaybackData(Vec<f32>),
     AudioPlaybackCompleted,
     AudioPlaybackFailed(String),
 
@@ -27,8 +34,8 @@ pub enum AppEvent {
     TranscriptionFailed(String),
 
     // LLM events
-    LLMMessageStarted,
-    LLMTextDelta(String),
+    LLMMessageStarted(String),
+    LLMTextDelta(LLMDelta),
     LLMMessageCompleted(String),
     LLMRequestFailed(String),
 

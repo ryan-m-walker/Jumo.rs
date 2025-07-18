@@ -83,7 +83,7 @@ impl AudioRecorder {
                 sample_format: hound::SampleFormat::Float,
             };
 
-            let mut writer = WavWriter::create(&temp_path.clone(), spec).unwrap();
+            let mut writer = WavWriter::create(&temp_path, spec).unwrap();
 
             for data in rx {
                 for sample in data {

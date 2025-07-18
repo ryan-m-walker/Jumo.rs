@@ -3,12 +3,13 @@ use std::{io::Stdout, time::Duration};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{Terminal, prelude::CrosstermBackend};
+use uuid::Uuid;
 
 use crate::{
     audio::player::AudioPlayer,
     events::EventBus,
-    state::{Speaker, TranscriptLine, TranscriptMessage},
-    widgets::app::AppWidget,
+    state::{MessageState, Speaker, TranscriptLine, TranscriptMessage},
+    widgets::main::MainWidget,
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
 use crate::{
@@ -68,9 +69,9 @@ impl App {
 
     async fn handle_app_event(&mut self, event: &AppEvent) -> Result<(), anyhow::Error> {
         match event {
+            // audio events
             AppEvent::AudioRecordingStarted => {
                 self.state.is_audio_recording_running = true;
-                self.state.is_audio_transcription_running = true;
             }
             AppEvent::AudioRecordingCompleted(temp_path) => {
                 self.state.is_audio_recording_running = false;
@@ -83,10 +84,19 @@ impl App {
             AppEvent::TranscriptionStarted => {
                 self.state.is_audio_transcription_running = true;
             }
+            AppEvent::AudioPlaybackStarted => {
+                self.state.is_audio_playback_running = true;
+            }
+            AppEvent::AudioPlaybackCompleted => {
+                self.state.is_audio_playback_running = false;
+            }
+
+            // transcription events
             AppEvent::TranscriptionCompleted(text) => {
                 self.state.is_audio_transcription_running = false;
 
                 let message = TranscriptMessage {
+                    id: Uuid::new_v4().to_string(),
                     speaker: Speaker::User,
                     text: text.to_string(),
                 };
@@ -103,33 +113,44 @@ impl App {
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_transcription_running = false;
             }
-            AppEvent::LLMMessageStarted => {
+
+            // llm events
+            AppEvent::LLMMessageStarted(message_id) => {
                 self.state.is_llm_message_running = true;
-            }
-            AppEvent::LLMMessageCompleted(text) => {
-                self.state.is_llm_message_running = false;
 
                 let message = TranscriptMessage {
+                    id: message_id.clone(),
                     speaker: Speaker::Assistant,
-                    text: text.to_string(),
+                    text: "".to_string(),
                 };
 
                 self.state
                     .transcript
                     .push(TranscriptLine::TranscriptMessage(message));
+            }
+            AppEvent::LLMTextDelta(delta) => {
+                self.state.on_llm_text_delta(delta);
+            }
+            AppEvent::LLMMessageCompleted(message_id) => {
+                self.state.is_llm_message_running = false;
 
-                self.elevenlabs.synthesize(text).await?;
+                if let Some(message) = self.state.get_message(message_id) {
+                    self.elevenlabs.synthesize(&message.text).await?;
+                }
             }
             AppEvent::LLMRequestFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_llm_message_running = false;
             }
+
+            // tts events
             AppEvent::TTSStarted => {
                 self.state.is_tts_running = true;
             }
             AppEvent::TTSCompleted(result) => {
                 self.audio_player
-                    .play(&result.audio_bytes, result.duration_seconds)?;
+                    .play(&result.audio_bytes, result.duration_seconds)
+                    .await?;
             }
             AppEvent::TTSFailed(error) => {
                 self.state.error = Some(error.to_string());
@@ -160,7 +181,7 @@ impl App {
 
     fn render(&mut self) -> Result<(), anyhow::Error> {
         self.terminal
-            .draw(|frame| frame.render_widget(AppWidget::new(&self.state), frame.area()))?;
+            .draw(|frame| frame.render_widget(MainWidget::new(&self.state), frame.area()))?;
         Ok(())
     }
 
