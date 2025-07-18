@@ -147,7 +147,7 @@ impl App {
         match event {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 match key_event.code {
-                    KeyCode::Char('q') => self.exit(),
+                    KeyCode::Char('q') => self.quit(),
                     KeyCode::Char(' ') => self.toggle_recording().await?,
                     _ => {}
                 }
@@ -164,7 +164,7 @@ impl App {
         Ok(())
     }
 
-    fn exit(&mut self) {
+    fn quit(&mut self) {
         self.state.is_app_running = false;
     }
 
