@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use tempfile::TempPath;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
@@ -24,7 +22,6 @@ pub enum AppEvent {
     AudioRecordingFailed(String),
 
     AudioPlaybackStarted,
-    AudioPlaybackData(Vec<f32>),
     AudioPlaybackCompleted,
     AudioPlaybackFailed(String),
 
@@ -43,8 +40,6 @@ pub enum AppEvent {
     TTSStarted,
     TTSCompleted(TTSResult),
     TTSFailed(String),
-
-    Error(String),
 }
 
 pub struct EventBus {

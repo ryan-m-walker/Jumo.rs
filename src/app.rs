@@ -3,12 +3,13 @@ use std::{io::Stdout, time::Duration};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{Terminal, prelude::CrosstermBackend};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::{
     audio::player::AudioPlayer,
     events::EventBus,
-    state::{MessageState, Speaker, TranscriptLine, TranscriptMessage},
+    state::{Speaker, TranscriptLine, TranscriptMessage},
     widgets::main::MainWidget,
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
@@ -19,6 +20,7 @@ use crate::{
 
 pub struct App {
     event_bus: EventBus,
+    event_sender: mpsc::Sender<AppEvent>,
     anthropic: AnthropicService,
     elevenlabs: ElevenLabsService,
     audio_recorder: AudioRecorder,
@@ -32,6 +34,7 @@ const FRAMES_PER_SECOND: f32 = 60.0;
 impl App {
     pub fn new() -> Self {
         let event_bus = EventBus::new();
+        let event_sender = event_bus.sender();
         let anthropic = AnthropicService::new(event_bus.sender());
         let elevenlabs = ElevenLabsService::new(event_bus.sender());
         let audio_recorder = AudioRecorder::new(event_bus.sender());
@@ -39,6 +42,7 @@ impl App {
 
         Self {
             event_bus,
+            event_sender,
             anthropic,
             elevenlabs,
             audio_recorder,
@@ -75,14 +79,14 @@ impl App {
             }
             AppEvent::AudioRecordingCompleted(temp_path) => {
                 self.state.is_audio_recording_running = false;
-                self.elevenlabs.transcribe(temp_path).await?;
+
+                if let Err(error) = self.elevenlabs.transcribe(temp_path).await {
+                    self.state.error = Some(error.to_string());
+                }
             }
             AppEvent::AudioRecordingFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_recording_running = false;
-            }
-            AppEvent::TranscriptionStarted => {
-                self.state.is_audio_transcription_running = true;
             }
             AppEvent::AudioPlaybackStarted => {
                 self.state.is_audio_playback_running = true;
@@ -90,8 +94,15 @@ impl App {
             AppEvent::AudioPlaybackCompleted => {
                 self.state.is_audio_playback_running = false;
             }
+            AppEvent::AudioPlaybackFailed(error) => {
+                self.state.error = Some(error.to_string());
+                self.state.is_audio_playback_running = false;
+            }
 
             // transcription events
+            AppEvent::TranscriptionStarted => {
+                self.state.is_audio_transcription_running = true;
+            }
             AppEvent::TranscriptionCompleted(text) => {
                 self.state.is_audio_transcription_running = false;
 
@@ -105,9 +116,14 @@ impl App {
                     .transcript
                     .push(TranscriptLine::TranscriptMessage(message));
 
-                self.anthropic
+                let result = self
+                    .anthropic
                     .send_message(text, &self.state.transcript)
-                    .await?;
+                    .await;
+
+                if let Err(error) = result {
+                    self.state.error = Some(error.to_string());
+                }
             }
             AppEvent::TranscriptionFailed(error) => {
                 self.state.error = Some(error.to_string());
@@ -135,7 +151,9 @@ impl App {
                 self.state.is_llm_message_running = false;
 
                 if let Some(message) = self.state.get_message(message_id) {
-                    self.elevenlabs.synthesize(&message.text).await?;
+                    if let Err(error) = self.elevenlabs.synthesize(&message.text).await {
+                        self.state.error = Some(error.to_string());
+                    };
                 }
             }
             AppEvent::LLMRequestFailed(error) => {
@@ -148,16 +166,18 @@ impl App {
                 self.state.is_tts_running = true;
             }
             AppEvent::TTSCompleted(result) => {
-                self.audio_player
+                let result = self
+                    .audio_player
                     .play(&result.audio_bytes, result.duration_seconds)
-                    .await?;
+                    .await;
+
+                if let Err(error) = result {
+                    self.state.error = Some(error.to_string());
+                }
             }
             AppEvent::TTSFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_tts_running = false;
-            }
-            _ => {
-                // TODO: handle other events
             }
         }
 
