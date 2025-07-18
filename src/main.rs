@@ -1,8 +1,10 @@
 use crate::app::App;
 
 mod app;
-mod recorder;
-mod claude_types;
+mod audio;
+mod events;
+mod services;
+mod state;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

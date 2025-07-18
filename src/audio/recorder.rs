@@ -1,10 +1,13 @@
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::bounded;
 use hound::{WavSpec, WavWriter};
-
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use tempfile::{NamedTempFile, TempPath};
+use tokio::sync::mpsc;
+
+use crate::events::AppEvent;
 
 pub struct AudioRecorder {
+    event_sender: mpsc::Sender<AppEvent>,
     input_stream: Option<cpal::Stream>,
     temp_file: Option<NamedTempFile>,
     sample_rate: u32,
@@ -12,8 +15,9 @@ pub struct AudioRecorder {
 }
 
 impl AudioRecorder {
-    pub fn new() -> Self {
+    pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
         Self {
+            event_sender,
             input_stream: None,
             temp_file: None,
             sample_rate: 0,
@@ -21,10 +25,14 @@ impl AudioRecorder {
         }
     }
 
-    pub fn record(&mut self) -> Result<(), anyhow::Error> {
+    pub async fn start(&mut self) -> Result<(), anyhow::Error> {
         if self.input_stream.is_some() {
             return Ok(());
         }
+
+        self.event_sender
+            .send(AppEvent::AudioRecordingStarted)
+            .await?;
 
         let (tx, rx) = bounded(50);
 
@@ -32,14 +40,13 @@ impl AudioRecorder {
         let temp_path = temp_file.path().to_owned();
         self.temp_file = Some(temp_file);
 
-        // Always create a new stream to ensure fresh channel connection
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .expect("No input device available");
-        let config = device
-            .default_input_config()
-            .expect("Failed to get default input config");
+
+        let Some(device) = host.default_input_device() else {
+            return Err(anyhow::anyhow!("No default input device found"));
+        };
+
+        let config = device.default_input_config()?;
 
         self.sample_rate = config.sample_rate().0;
         self.channels = config.channels();
@@ -76,7 +83,7 @@ impl AudioRecorder {
                 sample_format: hound::SampleFormat::Float,
             };
 
-            let mut writer = WavWriter::create(&temp_path, spec).unwrap();
+            let mut writer = WavWriter::create(&temp_path.clone(), spec).unwrap();
 
             for data in rx {
                 for sample in data {
@@ -90,7 +97,7 @@ impl AudioRecorder {
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<TempPath, anyhow::Error> {
+    pub async fn stop(&mut self) -> Result<(), anyhow::Error> {
         if let Some(stream) = &self.input_stream {
             // Wait for the recording to finish
             std::thread::sleep(std::time::Duration::from_millis(200));
@@ -102,7 +109,11 @@ impl AudioRecorder {
         let temp_file = self.temp_file.take().unwrap();
         let path = temp_file.into_temp_path();
 
-        Ok(path)
+        self.event_sender
+            .send(AppEvent::AudioRecordingCompleted(path))
+            .await?;
+
+        Ok(())
     }
 
     pub fn is_recording(&self) -> bool {
