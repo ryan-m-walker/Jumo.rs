@@ -59,8 +59,8 @@ impl App {
         while self.state.is_app_running {
             tokio::select! {
                 _ = interval.tick() => self.render()?,
-                Some(Ok(event)) = events.next() => self.handle_terminal_event(&event).await?,
                 Some(event) = self.event_bus.recv() => self.handle_app_event(&event).await?,
+                Some(Ok(event)) = events.next() => self.handle_terminal_event(&event).await?,
             }
         }
 

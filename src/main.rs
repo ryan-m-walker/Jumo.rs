@@ -8,9 +8,13 @@ mod services;
 mod state;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() {
     dotenv::dotenv().ok();
+
     let mut app = App::new();
-    app.start().await?;
-    Ok(())
+    if let Err(err) = app.start().await {
+        eprintln!("{err}");
+    }
+
+    ratatui::restore();
 }
