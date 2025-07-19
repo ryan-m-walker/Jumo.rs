@@ -3,13 +3,15 @@ use std::{io::Stdout, time::Duration};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{Terminal, prelude::CrosstermBackend};
-use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::{
     audio::player::AudioPlayer,
+    database::{
+        Database,
+        models::{Message, MessageContent, MessageType},
+    },
     events::EventBus,
-    state::{Speaker, TranscriptLine, TranscriptMessage},
     widgets::main::MainWidget,
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
@@ -19,8 +21,8 @@ use crate::{
 };
 
 pub struct App {
+    db: Database,
     event_bus: EventBus,
-    event_sender: mpsc::Sender<AppEvent>,
     anthropic: AnthropicService,
     elevenlabs: ElevenLabsService,
     audio_recorder: AudioRecorder,
@@ -33,8 +35,8 @@ const FRAMES_PER_SECOND: f32 = 60.0;
 
 impl App {
     pub fn new() -> Self {
+        let db = Database::new();
         let event_bus = EventBus::new();
-        let event_sender = event_bus.sender();
         let anthropic = AnthropicService::new(event_bus.sender());
         let elevenlabs = ElevenLabsService::new(event_bus.sender());
         let audio_recorder = AudioRecorder::new(event_bus.sender());
@@ -42,7 +44,7 @@ impl App {
 
         Self {
             event_bus,
-            event_sender,
+            db,
             anthropic,
             elevenlabs,
             audio_recorder,
@@ -54,6 +56,11 @@ impl App {
 
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
         self.state.is_app_running = true;
+
+        self.db.init()?;
+
+        let messages = self.db.get_messages()?;
+        self.state.messages = messages;
 
         let period = Duration::from_secs_f32(1.0 / FRAMES_PER_SECOND);
         let mut interval = tokio::time::interval(period);
@@ -67,7 +74,6 @@ impl App {
             }
         }
 
-        ratatui::restore();
         Ok(())
     }
 
@@ -106,19 +112,20 @@ impl App {
             AppEvent::TranscriptionCompleted(text) => {
                 self.state.is_audio_transcription_running = false;
 
-                let message = TranscriptMessage {
+                let message = Message {
                     id: Uuid::new_v4().to_string(),
-                    speaker: Speaker::User,
-                    text: text.to_string(),
+                    message_type: MessageType::User,
+                    content: MessageContent::User {
+                        text: text.to_string(),
+                    },
+                    created_at: None,
                 };
 
-                self.state
-                    .transcript
-                    .push(TranscriptLine::TranscriptMessage(message));
+                self.state.messages.push(message);
 
                 let result = self
                     .anthropic
-                    .send_message(text, &self.state.transcript)
+                    .send_message(text, &self.state.messages)
                     .await;
 
                 if let Err(error) = result {
@@ -131,30 +138,29 @@ impl App {
             }
 
             // llm events
-            AppEvent::LLMMessageStarted(message_id) => {
+            AppEvent::LLMMessageStarted(payload) => {
                 self.state.is_llm_message_running = true;
 
-                let message = TranscriptMessage {
-                    id: message_id.clone(),
-                    speaker: Speaker::Assistant,
-                    text: "".to_string(),
+                let message = Message {
+                    id: payload.message_id.clone(),
+                    message_type: MessageType::Assistant,
+                    content: MessageContent::Assistant {
+                        text: "".to_string(),
+                    },
+                    created_at: None,
                 };
 
-                self.state
-                    .transcript
-                    .push(TranscriptLine::TranscriptMessage(message));
+                self.state.messages.push(message);
             }
-            AppEvent::LLMTextDelta(delta) => {
-                self.state.on_llm_text_delta(delta);
+            AppEvent::LLMMessageDelta(payload) => {
+                self.state.on_llm_text_delta(payload);
             }
-            AppEvent::LLMMessageCompleted(message_id) => {
+            AppEvent::LLMMessageCompleted(payload) => {
                 self.state.is_llm_message_running = false;
 
-                if let Some(message) = self.state.get_message(message_id) {
-                    if let Err(error) = self.elevenlabs.synthesize(&message.text).await {
-                        self.state.error = Some(error.to_string());
-                    };
-                }
+                if let Err(error) = self.elevenlabs.synthesize(&payload.full_text).await {
+                    self.state.error = Some(error.to_string());
+                };
             }
             AppEvent::LLMRequestFailed(error) => {
                 self.state.error = Some(error.to_string());
@@ -189,6 +195,7 @@ impl App {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 match key_event.code {
                     KeyCode::Char('q') => self.quit(),
+                    KeyCode::Esc => self.cancel(),
                     KeyCode::Char(' ') => self.toggle_recording().await?,
                     _ => {}
                 }
@@ -207,6 +214,17 @@ impl App {
 
     fn quit(&mut self) {
         self.state.is_app_running = false;
+    }
+
+    fn cancel(&mut self) {
+        self.audio_player.cancel();
+        self.state.is_audio_playback_running = false;
+
+        self.anthropic.cancel();
+        self.state.is_llm_message_running = false;
+
+        self.elevenlabs.cancel();
+        self.state.is_audio_transcription_running = false;
     }
 
     async fn toggle_recording(&mut self) -> Result<(), anyhow::Error> {

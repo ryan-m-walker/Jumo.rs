@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
-use crate::state::{AppState, Speaker, TranscriptLine};
+use crate::{database::models::MessageContent, state::AppState};
 
 pub struct MainWidget<'a> {
     state: &'a AppState,
@@ -51,22 +51,25 @@ impl Widget for MainWidget<'_> {
 
         let mut lines = vec![];
 
-        for line in self.state.transcript.iter() {
-            match line {
-                TranscriptLine::TranscriptMessage(line) => {
-                    match line.speaker {
-                        Speaker::User => {
-                            lines.push(Line::from("[User]:").style(Style::new().yellow()));
-                        }
-                        Speaker::Assistant => {
-                            lines.push(Line::from("[Claude]:").style(Style::new().red()));
-                        }
-                    }
-
-                    lines.push(Line::from(line.text.clone()));
+        for message in self.state.messages.iter() {
+            match &message.content {
+                MessageContent::User { text } => {
+                    lines.push(Line::from("[User]:").style(Style::new().yellow()));
+                    lines.push(Line::from(text.clone()));
                 }
-                TranscriptLine::TranscriptError(line) => {
-                    lines.push(Line::from(line.text.clone()));
+                MessageContent::Assistant { text } => {
+                    lines.push(Line::from("[Assistant]:").style(Style::new().light_blue()));
+                    lines.push(Line::from(text.clone()));
+                }
+                MessageContent::Error { text } => {
+                    lines.push(Line::from("[Error]:").style(Style::new().red()));
+                    lines.push(Line::from(text.clone()));
+                }
+                MessageContent::ToolCall { .. } => {
+                    lines.push(Line::from("[ToolCall]:").style(Style::new().magenta()));
+                }
+                MessageContent::ToolResult { .. } => {
+                    lines.push(Line::from("[ToolResult]:").style(Style::new().magenta()));
                 }
             }
         }

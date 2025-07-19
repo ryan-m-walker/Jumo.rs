@@ -14,6 +14,23 @@ pub struct LLMDelta {
     pub text: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct LLMMessageStartedPayload {
+    pub message_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LLMMessageDeltaPayload {
+    pub message_id: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LLMMessageCompletedPayload {
+    pub message_id: String,
+    pub full_text: String,
+}
+
 #[derive(Debug)]
 pub enum AppEvent {
     // Audio events
@@ -31,9 +48,9 @@ pub enum AppEvent {
     TranscriptionFailed(String),
 
     // LLM events
-    LLMMessageStarted(String),
-    LLMTextDelta(LLMDelta),
-    LLMMessageCompleted(String),
+    LLMMessageStarted(LLMMessageStartedPayload),
+    LLMMessageDelta(LLMMessageDeltaPayload),
+    LLMMessageCompleted(LLMMessageCompletedPayload),
     LLMRequestFailed(String),
 
     // Text to speech events

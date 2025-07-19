@@ -1,4 +1,7 @@
-use crate::events::LLMDelta;
+use crate::{
+    database::models::{Message, MessageContent},
+    events::{LLMDelta, LLMMessageDeltaPayload},
+};
 
 #[derive(Debug, Clone)]
 pub enum Speaker {
@@ -19,23 +22,8 @@ pub struct TranscriptError {
 }
 
 #[derive(Debug, Clone)]
-pub enum TranscriptLine {
-    TranscriptMessage(TranscriptMessage),
-    TranscriptError(TranscriptError),
-}
-
-#[derive(Debug, Clone)]
-pub enum MessageState {
-    Idle,
-    RecordingAudio,
-    TranscribingAudio,
-    SendingMessageToLLM,
-    PlayingAudio,
-}
-
-#[derive(Debug, Clone)]
 pub struct AppState {
-    pub transcript: Vec<TranscriptLine>,
+    pub messages: Vec<Message>,
     pub error: Option<String>,
     pub is_app_running: bool,
     pub is_audio_transcription_running: bool,
@@ -43,14 +31,24 @@ pub struct AppState {
     pub is_tts_running: bool,
     pub is_audio_recording_running: bool,
     pub is_audio_playback_running: bool,
-
-    pub message_state: MessageState,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn on_llm_text_delta(&mut self, delta: &LLMMessageDeltaPayload) {
+        for message in self.messages.iter_mut() {
+            if let MessageContent::Assistant { text } = &mut message.content {
+                if message.id == delta.message_id {
+                    text.push_str(delta.text.as_str());
+                }
+            }
+        }
+    }
+}
+
+impl Default for AppState {
+    fn default() -> Self {
         Self {
-            transcript: vec![],
+            messages: vec![],
             error: None,
             is_app_running: true,
             is_audio_transcription_running: false,
@@ -58,46 +56,6 @@ impl AppState {
             is_tts_running: false,
             is_audio_recording_running: false,
             is_audio_playback_running: false,
-
-            message_state: MessageState::Idle,
         }
-    }
-
-    pub fn on_llm_text_delta(&mut self, delta: &LLMDelta) {
-        let message = self.transcript.iter_mut().find_map(|line| {
-            if let TranscriptLine::TranscriptMessage(message) = line {
-                if message.id == delta.id {
-                    Some(message)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        });
-
-        if let Some(message) = message {
-            message.text.push_str(&delta.text);
-        }
-    }
-
-    pub fn get_message(&self, id: &str) -> Option<&TranscriptMessage> {
-        self.transcript.iter().find_map(|line| {
-            if let TranscriptLine::TranscriptMessage(message) = line {
-                if &message.id == id {
-                    Some(message)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-    }
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self::new()
     }
 }

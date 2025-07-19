@@ -2,28 +2,30 @@ use cpal::{
     BufferSize, SampleRate, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use tokio::{
-    sync::mpsc,
-    time::{self, sleep},
-};
+use tokio::{sync::mpsc, time::sleep};
 use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::events::AppEvent;
 
 pub struct AudioPlayer {
     event_sender: mpsc::Sender<AppEvent>,
+    is_running: bool,
 }
 
 impl AudioPlayer {
     pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
-        Self { event_sender }
+        Self {
+            event_sender,
+            is_running: false,
+        }
     }
 
     pub async fn play(
-        &self,
+        &mut self,
         audio_bytes: &Bytes,
         duration_seconds: f64,
     ) -> Result<(), anyhow::Error> {
+        self.is_running = true;
         self.event_sender
             .send(AppEvent::AudioPlaybackStarted)
             .await?;
@@ -63,12 +65,23 @@ impl AudioPlayer {
         )?;
 
         stream.play()?;
-        time::sleep(std::time::Duration::from_secs_f64(duration_seconds + 0.5)).await;
 
+        let start_time = std::time::Instant::now();
+        let duration_seconds = duration_seconds + 0.5;
+
+        while self.is_running && start_time.elapsed().as_secs_f64() < duration_seconds {
+            sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        self.is_running = false;
         self.event_sender
             .send(AppEvent::AudioPlaybackCompleted)
             .await?;
 
         Ok::<(), anyhow::Error>(())
+    }
+
+    pub fn cancel(&mut self) {
+        self.is_running = false;
     }
 }

@@ -24,6 +24,7 @@ pub struct ElevenLabsService {
     event_sender: mpsc::Sender<AppEvent>,
     client: reqwest::Client,
     api_key: String,
+    is_running: bool,
 }
 
 impl ElevenLabsService {
@@ -36,10 +37,12 @@ impl ElevenLabsService {
             event_sender,
             api_key,
             client: reqwest::Client::new(),
+            is_running: false,
         }
     }
 
-    pub async fn transcribe(&self, audio_path: &TempPath) -> Result<(), anyhow::Error> {
+    pub async fn transcribe(&mut self, audio_path: &TempPath) -> Result<(), anyhow::Error> {
+        self.is_running = true;
         self.event_sender
             .send(AppEvent::TranscriptionStarted)
             .await?;
@@ -68,13 +71,20 @@ impl ElevenLabsService {
 
         let text = eleven_labs_resp.text;
 
+        if !self.is_running {
+            return Ok(());
+        }
+
         self.event_sender
             .send(AppEvent::TranscriptionCompleted(text))
             .await?;
+
+        self.is_running = false;
         Ok(())
     }
 
-    pub async fn synthesize(&self, text: &str) -> Result<(), anyhow::Error> {
+    pub async fn synthesize(&mut self, text: &str) -> Result<(), anyhow::Error> {
+        self.is_running = true;
         self.event_sender.send(AppEvent::TTSStarted).await?;
 
         let body = ElevenLabsSendTextMessage {
@@ -107,6 +117,11 @@ impl ElevenLabsService {
         let duration_seconds =
             audio_bytes.len() as f64 / (bytes_per_sample * channels * sample_rate) as f64;
 
+        if !self.is_running {
+            return Ok(());
+        }
+
+        self.is_running = false;
         self.event_sender
             .send(AppEvent::TTSCompleted(TTSResult {
                 audio_bytes,
@@ -115,5 +130,9 @@ impl ElevenLabsService {
             .await?;
 
         Ok(())
+    }
+
+    pub fn cancel(&mut self) {
+        self.is_running = false;
     }
 }

@@ -12,6 +12,7 @@ pub struct AudioRecorder {
     temp_file: Option<NamedTempFile>,
     sample_rate: u32,
     channels: u16,
+    is_playing: bool,
 }
 
 impl AudioRecorder {
@@ -22,6 +23,7 @@ impl AudioRecorder {
             temp_file: None,
             sample_rate: 0,
             channels: 0,
+            is_playing: false,
         }
     }
 
@@ -29,6 +31,8 @@ impl AudioRecorder {
         if self.input_stream.is_some() {
             return Ok(());
         }
+
+        self.is_playing = true;
 
         self.event_sender
             .send(AppEvent::AudioRecordingStarted)
@@ -102,6 +106,7 @@ impl AudioRecorder {
             // Wait for the recording to finish
             std::thread::sleep(std::time::Duration::from_millis(200));
             stream.pause()?;
+            self.is_playing = false;
         }
 
         self.input_stream = None;

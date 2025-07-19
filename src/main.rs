@@ -1,7 +1,10 @@
+use rusqlite::Connection;
+
 use crate::app::App;
 
 mod app;
 mod audio;
+mod database;
 mod events;
 mod prompts;
 mod services;
