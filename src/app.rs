@@ -3,6 +3,7 @@ use std::{io::Stdout, sync::Arc, time::Duration};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{Terminal, prelude::CrosstermBackend};
+use tokio::time::sleep_until;
 use uuid::Uuid;
 
 use crate::{
@@ -57,7 +58,10 @@ impl App {
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
         self.state.is_app_running = true;
 
+        ratatui::restore();
+
         self.db.init()?;
+        self.elevenlabs.connect().await?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;

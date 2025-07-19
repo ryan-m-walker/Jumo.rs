@@ -84,12 +84,6 @@ impl AnthropicService {
             system: Some(system),
         };
 
-        fs::write(
-            "claude_input.json",
-            serde_json::to_string_pretty(&body).unwrap(),
-        )
-        .unwrap();
-
         let event_sender = self.event_sender.clone();
         let api_key = self.api_key.clone();
 

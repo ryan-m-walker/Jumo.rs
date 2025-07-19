@@ -64,7 +64,35 @@ impl AudioPlayer {
                 &config,
                 move |data: &mut [f32], _| {
                     for sample in data {
-                        *sample = samples_clone.get(sample_index).copied().unwrap_or(0.0);
+                        let mut s = samples_clone.get(sample_index).copied().unwrap_or(0.0);
+                        
+                        // Original clean audio (uncomment to revert effects):
+                        // *sample = s; sample_index += 1; continue;
+
+                        // Apply robotic distortion effects
+                        s *= 2.5; // Moderate amplification
+                        
+                        // Smoother compression with more squashing
+                        let threshold = 0.2;
+                        let ratio = 0.05; // Very high compression ratio
+                        s = if s.abs() > threshold {
+                            s.signum() * (threshold + (s.abs() - threshold) * ratio)
+                        } else {
+                            s
+                        };
+                        
+                        // Bit crushing but slightly higher for less hiss
+                        let bits = 5.0; // 5-bit instead of 4-bit
+                        let levels = 2.0_f32.powf(bits);
+                        s = (s * levels).round() / levels;
+                        
+                        // Low-pass filter to reduce high-frequency hiss
+                        if sample_index > 0 {
+                            let prev = samples_clone.get(sample_index - 1).unwrap_or(&0.0);
+                            s = s * 0.7 + prev * 0.3; // Simple low-pass filter
+                        }
+
+                        *sample = s * 0.7; // Scale down to prevent clipping
                         sample_index += 1;
                     }
                 },
