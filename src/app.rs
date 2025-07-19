@@ -1,4 +1,4 @@
-use std::{io::Stdout, time::Duration};
+use std::{io::Stdout, sync::Arc, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
@@ -121,6 +121,7 @@ impl App {
                     created_at: None,
                 };
 
+                self.db.insert_message(&message)?;
                 self.state.messages.push(message);
 
                 let result = self
@@ -158,6 +159,10 @@ impl App {
             AppEvent::LLMMessageCompleted(payload) => {
                 self.state.is_llm_message_running = false;
 
+                if let Some(message) = self.state.get_message(&payload.message_id) {
+                    self.db.insert_message(message)?;
+                }
+
                 if let Err(error) = self.elevenlabs.synthesize(&payload.full_text).await {
                     self.state.error = Some(error.to_string());
                 };
@@ -172,6 +177,8 @@ impl App {
                 self.state.is_tts_running = true;
             }
             AppEvent::TTSCompleted(result) => {
+                self.state.is_tts_running = false;
+
                 let result = self
                     .audio_player
                     .play(&result.audio_bytes, result.duration_seconds)
@@ -213,11 +220,12 @@ impl App {
     }
 
     fn quit(&mut self) {
+        self.cancel();
         self.state.is_app_running = false;
     }
 
     fn cancel(&mut self) {
-        self.audio_player.cancel();
+        self.audio_player.stop();
         self.state.is_audio_playback_running = false;
 
         self.anthropic.cancel();

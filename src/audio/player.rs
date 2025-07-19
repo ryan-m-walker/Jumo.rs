@@ -1,22 +1,29 @@
+use std::time::Duration;
+
 use cpal::{
     BufferSize, SampleRate, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use tokio::{sync::mpsc, time::sleep};
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
+use tokio_util::sync::CancellationToken;
 
 use crate::events::AppEvent;
 
 pub struct AudioPlayer {
     event_sender: mpsc::Sender<AppEvent>,
+    output_stream: Option<cpal::Stream>,
     is_running: bool,
+    cancel_token: Option<CancellationToken>,
 }
 
 impl AudioPlayer {
     pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
         Self {
             event_sender,
+            output_stream: None,
             is_running: false,
+            cancel_token: None,
         }
     }
 
@@ -25,10 +32,12 @@ impl AudioPlayer {
         audio_bytes: &Bytes,
         duration_seconds: f64,
     ) -> Result<(), anyhow::Error> {
-        self.is_running = true;
         self.event_sender
             .send(AppEvent::AudioPlaybackStarted)
             .await?;
+
+        let audio_bytes = audio_bytes.clone();
+        let event_sender = self.event_sender.clone();
 
         let host = cpal::default_host();
         let device = host.default_output_device().unwrap();
@@ -50,38 +59,58 @@ impl AudioPlayer {
         let mut sample_index = 0;
         let samples_clone = samples.clone();
 
-        let stream = device.build_output_stream(
-            &config,
-            move |data: &mut [f32], _| {
-                for sample in data {
-                    *sample = samples_clone.get(sample_index).copied().unwrap_or(0.0);
-                    sample_index += 1;
+        let output_stream = device
+            .build_output_stream(
+                &config,
+                move |data: &mut [f32], _| {
+                    for sample in data {
+                        *sample = samples_clone.get(sample_index).copied().unwrap_or(0.0);
+                        sample_index += 1;
+                    }
+                },
+                move |err| {
+                    eprintln!("an error occurred on stream: {}", err);
+                },
+                None,
+            )
+            .unwrap();
+
+        self.output_stream = Some(output_stream);
+        let stream = self.output_stream.as_mut().unwrap();
+        stream.play().unwrap();
+
+        let cancel_token = CancellationToken::new();
+        let cancel_clone = cancel_token.clone();
+
+        tokio::spawn(async move {
+            let duration_seconds = duration_seconds + 0.5;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs_f64(duration_seconds + 0.5)) => {
+                    event_sender
+                        .send(AppEvent::AudioPlaybackCompleted)
+                        .await
+                        .unwrap();
                 }
-            },
-            move |err| {
-                eprintln!("an error occurred on stream: {}", err);
-            },
-            None,
-        )?;
+                _ = cancel_clone.cancelled() => {
+                    // playback was cancelled
+                }
+            }
+        });
 
-        stream.play()?;
+        self.cancel_token = Some(cancel_token);
 
-        let start_time = std::time::Instant::now();
-        let duration_seconds = duration_seconds + 0.5;
-
-        while self.is_running && start_time.elapsed().as_secs_f64() < duration_seconds {
-            sleep(std::time::Duration::from_millis(10)).await;
-        }
-
-        self.is_running = false;
-        self.event_sender
-            .send(AppEvent::AudioPlaybackCompleted)
-            .await?;
-
-        Ok::<(), anyhow::Error>(())
+        Ok(())
     }
 
-    pub fn cancel(&mut self) {
-        self.is_running = false;
+    pub fn stop(&mut self) {
+        if let Some(stream) = &self.output_stream {
+            stream.pause().unwrap();
+            self.output_stream = None;
+        }
+
+        if let Some(token) = &self.cancel_token {
+            token.cancel();
+            self.cancel_token = None;
+        }
     }
 }

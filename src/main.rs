@@ -1,5 +1,3 @@
-use rusqlite::Connection;
-
 use crate::app::App;
 
 mod app;

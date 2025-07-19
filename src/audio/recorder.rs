@@ -104,7 +104,7 @@ impl AudioRecorder {
     pub async fn stop(&mut self) -> Result<(), anyhow::Error> {
         if let Some(stream) = &self.input_stream {
             // Wait for the recording to finish
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             stream.pause()?;
             self.is_playing = false;
         }

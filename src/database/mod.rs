@@ -10,7 +10,7 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Self {
-        let connection = Connection::open_in_memory().expect("Failed to open database");
+        let connection = Connection::open("./data/v1.db").expect("Failed to open database");
         Self { connection }
     }
 
@@ -31,7 +31,7 @@ impl Database {
     pub fn get_messages(&self) -> Result<Vec<Message>, anyhow::Error> {
         let mut stmt = self
             .connection
-            .prepare("SELECT * FROM messages ORDER BY created_at DESC")?;
+            .prepare("SELECT * FROM messages ORDER BY created_at DESC LIMIT 50")?;
 
         let messages_iter = stmt.query_map([], |row| {
             let id: String = row.get(0)?;

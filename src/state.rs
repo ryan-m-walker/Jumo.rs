@@ -43,6 +43,16 @@ impl AppState {
             }
         }
     }
+
+    pub fn get_message(&self, id: &str) -> Option<&Message> {
+        for message in self.messages.iter() {
+            if message.id == id {
+                return Some(message);
+            }
+        }
+
+        None
+    }
 }
 
 impl Default for AppState {

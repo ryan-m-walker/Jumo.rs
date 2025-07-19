@@ -6,7 +6,11 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
-use crate::{database::models::MessageContent, state::AppState};
+use crate::{
+    database::models::MessageContent,
+    state::AppState,
+    widgets::{header::Header, status_line::StatusLine},
+};
 
 pub struct MainWidget<'a> {
     state: &'a AppState,
@@ -22,36 +26,25 @@ impl Widget for MainWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Fill(1)].as_ref())
+            .constraints(
+                [
+                    Constraint::Length(1),
+                    Constraint::Fill(1),
+                    Constraint::Length(1),
+                ]
+                .as_ref(),
+            )
             .split(area);
 
-        let title = Line::from(" Transcript ".bold());
         let block = Block::bordered()
-            .title(title.centered())
             .border_style(Style::new().yellow())
             .border_type(BorderType::Rounded);
 
-        let header_text = if self.state.is_audio_recording_running {
-            "Recording audio..."
-        } else if self.state.is_audio_transcription_running {
-            "Transcribing audio..."
-        } else if self.state.is_llm_message_running {
-            "Sending message to LLM..."
-        } else if self.state.is_tts_running {
-            "Generating audio..."
-        } else {
-            "Press space to start recording audio..."
-        };
-
-        let header = Paragraph::new(header_text).style(Style::new().dim()).block(
-            Block::bordered()
-                .border_style(Style::new().yellow())
-                .border_type(BorderType::Rounded),
-        );
-
         let mut lines = vec![];
+        let messages = &self.state.messages;
+        let messages_len = messages.len();
 
-        for message in self.state.messages.iter() {
+        for message in &messages[messages_len.saturating_sub(2)..] {
             match &message.content {
                 MessageContent::User { text } => {
                     lines.push(Line::from("[User]:").style(Style::new().yellow()));
@@ -79,7 +72,8 @@ impl Widget for MainWidget<'_> {
             .wrap(Wrap { trim: true })
             .block(block);
 
-        header.render(chunks[0], buf);
+        Header.render(chunks[0], buf);
         transcript.render(chunks[1], buf);
+        StatusLine::new(self.state).render(chunks[2], buf);
     }
 }

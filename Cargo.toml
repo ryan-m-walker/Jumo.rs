@@ -22,4 +22,6 @@ tempfile = "3.20.0"
 throbber-widgets-tui = "0.8.0"
 tokio = { version = "1.46.1", features = ["full"] }
 tokio-tungstenite = "0.27.0"
+tokio-util = "0.7.15"
+tui-scrollview = "0.5.1"
 uuid = { version = "1.17.0", features = ["v4"] }

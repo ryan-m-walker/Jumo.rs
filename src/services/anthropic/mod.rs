@@ -1,3 +1,5 @@
+use std::fs;
+
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -18,7 +20,6 @@ pub mod types;
 
 pub struct AnthropicService {
     event_sender: mpsc::Sender<AppEvent>,
-    client: reqwest::Client,
     api_key: String,
     is_running: bool,
 }
@@ -32,7 +33,6 @@ impl AnthropicService {
         Self {
             event_sender,
             api_key,
-            client: reqwest::Client::new(),
             is_running: false,
         }
     }
@@ -42,8 +42,6 @@ impl AnthropicService {
         message: &str,
         messages: &[Message],
     ) -> Result<(), anyhow::Error> {
-        self.is_running = true;
-
         let message_id = Uuid::new_v4().to_string();
         let payload = LLMMessageStartedPayload {
             message_id: message_id.clone(),
@@ -86,79 +84,99 @@ impl AnthropicService {
             system: Some(system),
         };
 
-        let mut stream = self
-            .client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?
-            .bytes_stream()
-            .eventsource();
+        fs::write(
+            "claude_input.json",
+            serde_json::to_string_pretty(&body).unwrap(),
+        )
+        .unwrap();
 
-        let mut buffer = String::new();
+        let event_sender = self.event_sender.clone();
+        let api_key = self.api_key.clone();
 
-        while let Some(event) = stream.next().await {
-            if !self.is_running {
-                break;
-            }
+        tokio::spawn(async move {
+            let client = reqwest::Client::new();
 
-            match event {
-                Ok(event) => {
-                    if event.data.is_empty() {
-                        continue;
+            let resp = client
+                .post("https://api.anthropic.com/v1/messages")
+                .header("x-api-key", api_key)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .json(&body)
+                .send()
+                .await;
+
+            let Ok(resp) = resp else {
+                let message = String::from("Failed to send message to anthropic");
+                event_sender
+                    .send(AppEvent::LLMRequestFailed(message))
+                    .await
+                    .unwrap();
+                return;
+            };
+
+            let mut stream = resp.bytes_stream().eventsource();
+
+            let mut buffer = String::new();
+
+            while let Some(event) = stream.next().await {
+                match event {
+                    Ok(event) => {
+                        if event.data.is_empty() {
+                            continue;
+                        }
+
+                        let stream_event: Result<StreamEvent, _> =
+                            serde_json::from_str(&event.data);
+
+                        match stream_event {
+                            Ok(StreamEvent::ContentBlockDelta {
+                                delta: Delta::TextDelta { text },
+                                ..
+                            }) => {
+                                let payload = LLMMessageDeltaPayload {
+                                    message_id: message_id.clone(),
+                                    text: text.to_string(),
+                                };
+
+                                buffer.push_str(&text);
+
+                                event_sender
+                                    .send(AppEvent::LLMMessageDelta(payload))
+                                    .await
+                                    .unwrap();
+                            }
+                            Ok(StreamEvent::MessageStop) => {
+                                break;
+                            }
+                            Ok(StreamEvent::Error { error }) => {
+                                event_sender
+                                    .send(AppEvent::LLMRequestFailed(error.message))
+                                    .await
+                                    .unwrap();
+                                break;
+                            }
+                            _ => {}
+                        }
                     }
-
-                    let stream_event: Result<StreamEvent, _> = serde_json::from_str(&event.data);
-
-                    match stream_event {
-                        Ok(StreamEvent::ContentBlockDelta {
-                            delta: Delta::TextDelta { text },
-                            ..
-                        }) => {
-                            let payload = LLMMessageDeltaPayload {
-                                message_id: message_id.clone(),
-                                text: text.to_string(),
-                            };
-
-                            buffer.push_str(&text);
-
-                            self.event_sender
-                                .send(AppEvent::LLMMessageDelta(payload))
-                                .await?;
-                        }
-                        Ok(StreamEvent::MessageStop) => {
-                            break;
-                        }
-                        Ok(StreamEvent::Error { error }) => {
-                            self.event_sender
-                                .send(AppEvent::LLMRequestFailed(error.message))
-                                .await?;
-                            break;
-                        }
-                        _ => {}
+                    Err(err) => {
+                        event_sender
+                            .send(AppEvent::LLMRequestFailed(err.to_string()))
+                            .await
+                            .unwrap();
                     }
                 }
-                Err(err) => {
-                    self.event_sender
-                        .send(AppEvent::LLMRequestFailed(err.to_string()))
-                        .await?;
-                }
             }
-        }
 
-        self.is_running = false;
+            let payload = LLMMessageCompletedPayload {
+                message_id: message_id.clone(),
+                full_text: buffer,
+            };
 
-        let payload = LLMMessageCompletedPayload {
-            message_id: message_id.clone(),
-            full_text: buffer,
-        };
-
-        self.event_sender
-            .send(AppEvent::LLMMessageCompleted(payload))
-            .await?;
+            event_sender
+                .send(AppEvent::LLMMessageCompleted(payload))
+                .await
+                .unwrap();
+        });
 
         Ok(())
     }
