@@ -2,6 +2,8 @@ use tempfile::TempPath;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
 
+use crate::database::models::log::LogLevel;
+
 #[derive(Debug, Clone)]
 pub struct TTSResult {
     pub audio_bytes: Bytes,
@@ -9,32 +11,32 @@ pub struct TTSResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct LLMDelta {
-    pub id: String,
-    pub text: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct LLMMessageStartedPayload {
+pub struct LLMMessageStartedEventPayload {
     pub message_id: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct LLMMessageDeltaPayload {
+pub struct LLMMessageDeltaEventPayload {
     pub message_id: String,
     pub text: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct LLMMessageCompletedPayload {
+pub struct LLMMessageCompletedEventPayload {
     pub message_id: String,
     pub full_text: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct TextProcessorChunkPayload {
+pub struct TextProcessorChunkEventPayload {
     pub text: String,
     pub flush: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogEventPayload {
+    pub level: LogLevel,
+    pub message: String,
 }
 
 #[derive(Debug)]
@@ -44,9 +46,7 @@ pub enum AppEvent {
     AudioRecordingCompleted(TempPath),
     AudioRecordingFailed(String),
 
-    AudioPlaybackStarted,
-    AudioPlaybackCompleted,
-    AudioPlaybackFailed(String),
+    AudioPlaybackError(String),
 
     // Transcription events
     TranscriptionStarted,
@@ -54,18 +54,18 @@ pub enum AppEvent {
     TranscriptionFailed(String),
 
     // LLM events
-    LLMMessageStarted(LLMMessageStartedPayload),
-    LLMMessageDelta(LLMMessageDeltaPayload),
-    LLMMessageCompleted(LLMMessageCompletedPayload),
+    LLMMessageStarted(LLMMessageStartedEventPayload),
+    LLMMessageDelta(LLMMessageDeltaEventPayload),
+    LLMMessageCompleted(LLMMessageCompletedEventPayload),
     LLMRequestFailed(String),
 
-    TextProcessorTextChunk(TextProcessorChunkPayload),
+    TextProcessorTextChunk(TextProcessorChunkEventPayload),
 
     // Text to speech events
-    TTSStarted,
-    TTSCompleted(TTSResult),
     TTSChunk(Bytes),
-    TTSFailed(String),
+    TTSError(String),
+
+    Log(LogEventPayload),
 }
 
 pub struct EventBus {

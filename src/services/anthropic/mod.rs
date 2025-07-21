@@ -1,19 +1,19 @@
-use std::fs;
-
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::{
-    database::models::{Message, MessageContent},
+    database::models::{
+        log::LogLevel,
+        message::{Message, MessageContent},
+    },
     events::{
-        AppEvent, LLMDelta, LLMMessageCompletedPayload, LLMMessageDeltaPayload,
-        LLMMessageStartedPayload,
+        AppEvent, LLMMessageCompletedEventPayload, LLMMessageDeltaEventPayload,
+        LLMMessageStartedEventPayload, LogEventPayload,
     },
     prompts::system::SystemPrompt,
     services::anthropic::types::{ClaudeInput, ClaudeMessage, Delta, StreamEvent},
-    state::Speaker,
 };
 
 pub mod types;
@@ -21,7 +21,6 @@ pub mod types;
 pub struct AnthropicService {
     event_sender: mpsc::Sender<AppEvent>,
     api_key: String,
-    is_running: bool,
 }
 
 impl AnthropicService {
@@ -33,7 +32,6 @@ impl AnthropicService {
         Self {
             event_sender,
             api_key,
-            is_running: false,
         }
     }
 
@@ -43,7 +41,7 @@ impl AnthropicService {
         messages: &[Message],
     ) -> Result<(), anyhow::Error> {
         let message_id = Uuid::new_v4().to_string();
-        let payload = LLMMessageStartedPayload {
+        let payload = LLMMessageStartedEventPayload {
             message_id: message_id.clone(),
         };
 
@@ -68,6 +66,13 @@ impl AnthropicService {
                 });
             }
         }
+
+        self.event_sender
+            .send(AppEvent::Log(LogEventPayload {
+                level: LogLevel::Info,
+                message: format!("Sending message to anthropic: {message}"),
+            }))
+            .await?;
 
         claude_messages.push(ClaudeMessage {
             role: "user".to_string(),
@@ -127,7 +132,7 @@ impl AnthropicService {
                                 delta: Delta::TextDelta { text },
                                 ..
                             }) => {
-                                let payload = LLMMessageDeltaPayload {
+                                let payload = LLMMessageDeltaEventPayload {
                                     message_id: message_id.clone(),
                                     text: text.to_string(),
                                 };
@@ -161,7 +166,7 @@ impl AnthropicService {
                 }
             }
 
-            let payload = LLMMessageCompletedPayload {
+            let payload = LLMMessageCompletedEventPayload {
                 message_id: message_id.clone(),
                 full_text: buffer,
             };
@@ -176,6 +181,6 @@ impl AnthropicService {
     }
 
     pub fn cancel(&mut self) {
-        self.is_running = false;
+        // TODO: cancel requests
     }
 }

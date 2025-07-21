@@ -30,7 +30,6 @@ const OUTPUT_FORMAT: &str = "pcm_44100";
 pub struct ElevenLabsService {
     event_sender: mpsc::Sender<AppEvent>,
     api_key: String,
-    is_running: bool,
     ws_sink: Option<WsSink>,
     ws_stream: Option<WsStream>,
 }
@@ -44,7 +43,6 @@ impl ElevenLabsService {
         Self {
             event_sender,
             api_key,
-            is_running: false,
             ws_sink: None,
             ws_stream: None,
         }
@@ -171,7 +169,7 @@ impl ElevenLabsService {
             let Ok(file_bytes) = file_bytes else {
                 let message = String::from("Failed to create file bytes");
                 event_sender
-                    .send(AppEvent::TTSFailed(message))
+                    .send(AppEvent::TranscriptionFailed(message))
                     .await
                     .unwrap();
                 return;
@@ -190,7 +188,7 @@ impl ElevenLabsService {
             let Ok(resp) = resp else {
                 let message = String::from("Failed to send audio to ElevenLabs");
                 event_sender
-                    .send(AppEvent::TTSFailed(message))
+                    .send(AppEvent::TranscriptionFailed(message))
                     .await
                     .unwrap();
                 return;
@@ -200,7 +198,7 @@ impl ElevenLabsService {
             let Ok(json) = json else {
                 let message = String::from("Failed to get JSON from ElevenLabs");
                 event_sender
-                    .send(AppEvent::TTSFailed(message))
+                    .send(AppEvent::TranscriptionFailed(message))
                     .await
                     .unwrap();
                 return;
@@ -218,6 +216,6 @@ impl ElevenLabsService {
     }
 
     pub fn cancel(&mut self) {
-        self.is_running = false;
+        // TODO: cancel requests
     }
 }

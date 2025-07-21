@@ -9,9 +9,13 @@ use crate::{
     audio::player::AudioPlayer,
     database::{
         Database,
-        models::{Message, MessageContent, MessageType},
+        models::{
+            log::Log,
+            message::{Message, MessageContent, MessageType},
+        },
     },
     events::EventBus,
+    state::View,
     text_processor::TextProcessor,
     widgets::main::MainWidget,
 };
@@ -100,15 +104,8 @@ impl App {
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_recording_running = false;
             }
-            AppEvent::AudioPlaybackStarted => {
-                self.state.is_audio_playback_running = true;
-            }
-            AppEvent::AudioPlaybackCompleted => {
-                self.state.is_audio_playback_running = false;
-            }
-            AppEvent::AudioPlaybackFailed(error) => {
+            AppEvent::AudioPlaybackError(error) => {
                 self.state.error = Some(error.to_string());
-                self.state.is_audio_playback_running = false;
             }
 
             // transcription events
@@ -165,6 +162,8 @@ impl App {
             }
             AppEvent::LLMMessageCompleted(payload) => {
                 self.state.is_llm_message_running = false;
+
+                self.text_processor.flush().await?;
                 self.elevenlabs.end_stream().await?;
 
                 if let Some(message) = self.state.get_message(&payload.message_id) {
@@ -181,29 +180,26 @@ impl App {
             }
 
             // tts events
-            AppEvent::TTSStarted => {
-                self.state.is_tts_running = true;
-            }
             AppEvent::TTSChunk(audio_bytes) => {
                 if let Err(e) = self.audio_player.push_audio_chunk(audio_bytes) {
                     self.state.error = Some(e.to_string());
                 }
             }
-            AppEvent::TTSCompleted(result) => {
-                self.state.is_tts_running = false;
-
-                let result = self
-                    .audio_player
-                    .play(&result.audio_bytes, result.duration_seconds)
-                    .await;
-
-                if let Err(error) = result {
-                    self.state.error = Some(error.to_string());
-                }
-            }
-            AppEvent::TTSFailed(error) => {
+            AppEvent::TTSError(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_tts_running = false;
+            }
+
+            // log events
+            AppEvent::Log(payload) => {
+                let log = Log {
+                    id: Uuid::new_v4().to_string(),
+                    text: payload.message.clone(),
+                    level: payload.level,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+
+                self.state.log(log);
             }
         }
 
@@ -214,9 +210,18 @@ impl App {
         match event {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 match key_event.code {
-                    KeyCode::Char('q') => self.quit(),
+                    // general
                     KeyCode::Esc => self.cancel(),
+                    KeyCode::Char('q') => self.quit(),
+
+                    // audio
                     KeyCode::Char(' ') => self.toggle_recording().await?,
+
+                    // navigation
+                    KeyCode::Char('1') => self.state.view = View::Home,
+                    KeyCode::Char('2') => self.state.view = View::Logs,
+                    KeyCode::Tab => self.tab_view_forward(),
+                    KeyCode::BackTab => self.tab_view_backward(),
                     _ => {}
                 }
             }
@@ -224,6 +229,20 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn tab_view_forward(&mut self) {
+        match self.state.view {
+            View::Home => self.state.view = View::Logs,
+            View::Logs => self.state.view = View::Home,
+        }
+    }
+
+    fn tab_view_backward(&mut self) {
+        match self.state.view {
+            View::Home => self.state.view = View::Logs,
+            View::Logs => self.state.view = View::Home,
+        }
     }
 
     fn render(&mut self) -> Result<(), anyhow::Error> {

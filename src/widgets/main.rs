@@ -7,9 +7,9 @@ use ratatui::{
 };
 
 use crate::{
-    database::models::MessageContent,
+    database::models::message::MessageContent,
     state::AppState,
-    widgets::{header::Header, status_line::StatusLine},
+    widgets::{header::Header, nav_tabs::NavTabs, status_line::StatusLine},
 };
 
 pub struct MainWidget<'a> {
@@ -71,7 +71,7 @@ impl Widget for MainWidget<'_> {
             .wrap(Wrap { trim: true })
             .block(block);
 
-        Header.render(chunks[0], buf);
+        NavTabs::new(self.state).render(chunks[0], buf);
         transcript.render(chunks[1], buf);
         StatusLine::new(self.state).render(chunks[2], buf);
     }

@@ -1,1 +1,1 @@
-{"version":"0.2","words":["tungstenite","elevenlabs","ratatui","Crossterm","reqwest","dotenv","rusqlite","serde","eventsource","scrollview","peekable"],"language":"en","flagWords":[]}
+{"words":["tungstenite","elevenlabs","ratatui","Crossterm","reqwest","dotenv","rusqlite","serde","eventsource","scrollview","peekable","chrono","ringbuf"],"version":"0.2","flagWords":[],"language":"en"}

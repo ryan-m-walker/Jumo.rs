@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::database::models::Model;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum MessageType {
     User,
@@ -40,19 +42,18 @@ pub struct Message {
     pub created_at: Option<String>,
 }
 
-impl Message {
-    pub fn update() {
-        let mut messages: Vec<Message> = vec![];
+impl Model for Message {
+    fn init_table(connection: &rusqlite::Connection) -> Result<(), anyhow::Error> {
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                message_type TEXT NOT NULL CHECK (message_type IN ('user', 'assistant', 'error', 'tool_call', 'tool_result')),
+                content TEXT NOT NULL,
+                created_at TEXT
+            )",
+            (),
+        );
 
-        let delta_id = "delta id";
-        let new_text = "new text";
-
-        for message in messages.iter_mut() {
-            if let MessageContent::Assistant { text } = &mut message.content {
-                if message.id == delta_id {
-                    text.push_str(new_text);
-                }
-            }
-        }
+        Ok(())
     }
 }

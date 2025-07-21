@@ -1,6 +1,10 @@
 use rusqlite::Connection;
 
-use crate::database::models::{Message, MessageContent, MessageType};
+use crate::database::models::{
+    Model,
+    log::Log,
+    message::{Message, MessageContent, MessageType},
+};
 
 pub mod models;
 
@@ -15,16 +19,8 @@ impl Database {
     }
 
     pub fn init(&self) -> Result<(), anyhow::Error> {
-        self.connection.execute(
-            "CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                message_type TEXT NOT NULL CHECK (message_type IN ('user', 'assistant', 'error', 'tool_call', 'tool_result')),
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )",
-            (),
-        )?;
-
+        Log::init_table(&self.connection)?;
+        Message::init_table(&self.connection)?;
         Ok(())
     }
 

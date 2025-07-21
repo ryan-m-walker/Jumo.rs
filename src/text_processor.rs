@@ -1,14 +1,20 @@
+use std::mem::take;
+
 use tokio::sync::mpsc;
 
-use crate::events::{AppEvent, LLMDelta, TextProcessorChunkPayload};
+use crate::events::{AppEvent, TextProcessorChunkEventPayload};
 
 pub struct TextProcessor {
     event_sender: mpsc::Sender<AppEvent>,
+    pending_chunk: String,
 }
 
 impl TextProcessor {
     pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
-        Self { event_sender }
+        Self {
+            event_sender,
+            pending_chunk: String::new(),
+        }
     }
 
     pub async fn process_delta(&mut self, delta: &str) -> Result<(), anyhow::Error> {
@@ -21,8 +27,11 @@ impl TextProcessor {
             if matches!(c, '.' | '!' | '?' | ';' | '\n') {
                 if let Some(next_c) = chars.peek() {
                     if next_c.is_whitespace() {
-                        let payload = TextProcessorChunkPayload {
-                            text: buffer.trim().to_string(),
+                        let mut pending_chunk = take(&mut self.pending_chunk);
+                        pending_chunk.push_str(&buffer);
+
+                        let payload = TextProcessorChunkEventPayload {
+                            text: pending_chunk,
                             flush: true,
                         };
 
@@ -36,14 +45,24 @@ impl TextProcessor {
         }
 
         if !buffer.trim().is_empty() {
-            let payload = TextProcessorChunkPayload {
-                text: buffer.trim().to_string(),
-                flush: false,
+            self.pending_chunk.push_str(&buffer);
+        }
+
+        Ok(())
+    }
+
+    pub async fn flush(&mut self) -> Result<(), anyhow::Error> {
+        if !self.pending_chunk.is_empty() {
+            let payload = TextProcessorChunkEventPayload {
+                text: self.pending_chunk.clone(),
+                flush: true,
             };
 
             self.event_sender
                 .send(AppEvent::TextProcessorTextChunk(payload))
                 .await?;
+
+            self.pending_chunk.clear();
         }
 
         Ok(())

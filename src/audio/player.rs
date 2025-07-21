@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex, mpsc};
 
 use cpal::{
     BufferSize, SampleRate, StreamConfig,
@@ -11,7 +8,6 @@ use ringbuf::{
     HeapRb,
     traits::{Consumer, Producer},
 };
-use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
 use tokio_util::sync::CancellationToken;
 
@@ -20,15 +16,15 @@ use crate::events::AppEvent;
 type AudioBuffer = Arc<Mutex<HeapRb<f32>>>;
 
 pub struct AudioPlayer {
-    event_sender: mpsc::Sender<AppEvent>,
+    event_sender: tokio::sync::mpsc::Sender<AppEvent>,
     output_stream: Option<cpal::Stream>,
     cancel_token: Option<CancellationToken>,
     buffer: AudioBuffer,
 }
 
 impl AudioPlayer {
-    pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
-        let buffer_size = 48000 * 10;
+    pub fn new(event_sender: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
+        let buffer_size = 48000 * 100;
 
         Self {
             event_sender,
@@ -51,6 +47,8 @@ impl AudioPlayer {
             buffer_size: BufferSize::Default,
         };
 
+        let (tx, rx) = mpsc::channel();
+
         let buffer = self.buffer.clone();
 
         let output_stream = device.build_output_stream(
@@ -62,135 +60,24 @@ impl AudioPlayer {
                 }
             },
             move |err| {
-                eprintln!("an error occurred on stream: {}", err);
+                tx.send(err).unwrap();
             },
             None,
         )?;
 
-        self.output_stream = Some(output_stream);
-        let stream = self.output_stream.as_mut().unwrap();
-        stream.play()?;
-
-        Ok(())
-    }
-
-    pub async fn play(
-        &mut self,
-        audio_bytes: &Bytes,
-        duration_seconds: f64,
-    ) -> Result<(), anyhow::Error> {
-        self.event_sender
-            .send(AppEvent::AudioPlaybackStarted)
-            .await?;
-
-        let audio_bytes = audio_bytes.clone();
         let event_sender = self.event_sender.clone();
-
-        let host = cpal::default_host();
-        let device = host.default_output_device().unwrap();
-
-        let config = StreamConfig {
-            channels: 1,
-            sample_rate: SampleRate(44100),
-            buffer_size: BufferSize::Default,
-        };
-
-        let samples: Vec<f32> = audio_bytes
-            .chunks_exact(2)
-            .map(|chunk| {
-                let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
-                sample as f32 / i16::MAX as f32
-            })
-            .collect();
-
-        let mut sample_index = 0;
-        let samples_clone = samples.clone();
-
-        let output_stream = device
-            .build_output_stream(
-                &config,
-                move |data: &mut [f32], _| {
-                    for sample in data {
-                        let mut s = samples_clone.get(sample_index).copied().unwrap_or(0.0);
-
-                        // Original clean audio (uncomment to revert effects):
-                        // *sample = s; sample_index += 1; continue;
-
-                        // Apply robotic distortion effects
-                        s *= 2.5; // Moderate amplification
-
-                        // Smoother compression with more squashing
-                        let threshold = 0.2;
-                        let ratio = 0.05; // Very high compression ratio
-                        s = if s.abs() > threshold {
-                            s.signum() * (threshold + (s.abs() - threshold) * ratio)
-                        } else {
-                            s
-                        };
-
-                        // Bit crushing but slightly higher for less hiss
-                        let bits = 5.0; // 5-bit instead of 4-bit
-                        let levels = 2.0_f32.powf(bits);
-                        s = (s * levels).round() / levels;
-
-                        // Low-pass filter to reduce high-frequency hiss
-                        if sample_index > 0 {
-                            let prev = samples_clone.get(sample_index - 1).unwrap_or(&0.0);
-                            s = s * 0.7 + prev * 0.3; // Simple low-pass filter
-                        }
-
-                        *sample = s * 0.7; // Scale down to prevent clipping
-                        sample_index += 1;
-                    }
-                },
-                move |err| {
-                    eprintln!("an error occurred on stream: {}", err);
-                },
-                None,
-            )
-            .unwrap();
-
-        self.output_stream = Some(output_stream);
-        let stream = self.output_stream.as_mut().unwrap();
-        stream.play().unwrap();
-
-        let cancel_token = CancellationToken::new();
-        let cancel_clone = cancel_token.clone();
-
         tokio::spawn(async move {
-            let duration_seconds = duration_seconds + 0.5;
-            tokio::select! {
-                _ = tokio::time::sleep(Duration::from_secs_f64(duration_seconds + 0.5)) => {
-                    event_sender
-                        .send(AppEvent::AudioPlaybackCompleted)
-                        .await
-                        .unwrap();
-                }
-                _ = cancel_clone.cancelled() => {
-                    // playback was cancelled
-                }
+            for err in rx {
+                event_sender
+                    .send(AppEvent::AudioPlaybackError(err.to_string()))
+                    .await
+                    .unwrap();
             }
         });
 
-        self.cancel_token = Some(cancel_token);
-
-        Ok(())
-    }
-
-    pub fn stop(&mut self) -> Result<(), anyhow::Error> {
-        if let Ok(mut buf) = self.buffer.lock() {
-            buf.clear();
-        }
-
-        if let Some(stream) = &self.output_stream {
-            stream.pause().unwrap();
-            self.output_stream = None;
-        }
-
-        if let Some(token) = &self.cancel_token {
-            token.cancel();
-            self.cancel_token = None;
-        }
+        self.output_stream = Some(output_stream);
+        let stream = self.output_stream.as_mut().unwrap();
+        stream.play()?;
 
         Ok(())
     }
@@ -211,60 +98,9 @@ impl AudioPlayer {
         Ok(())
     }
 
-    // pub fn start_streaming(&mut self) -> Result<(), anyhow::Error> {
-    //     if self.output_stream.is_some() {
-    //         return Ok(()); // Already streaming
-    //     }
-    //
-    //     let host = cpal::default_host();
-    //     let device = host.default_output_device().unwrap();
-    //
-    //     let config = StreamConfig {
-    //         channels: 1,
-    //         sample_rate: SampleRate(44100),
-    //         buffer_size: BufferSize::Default,
-    //     };
-    //
-    //     let buffer_clone = Arc::clone(&self.buffer);
-    //
-    //     let output_stream = device.build_output_stream(
-    //         &config,
-    //         move |data: &mut [f32], _| {
-    //             if let Ok(mut buf) = buffer_clone.lock() {
-    //                 for sample in data {
-    //                     if let Some(s) = buf.pop() {
-    //                         // Apply robotic distortion effects
-    //                         let mut processed = s * 2.5; // Moderate amplification
-    //
-    //                         // Smoother compression with more squashing
-    //                         let threshold = 0.2;
-    //                         let ratio = 0.05; // Very high compression ratio
-    //                         processed = if processed.abs() > threshold {
-    //                             processed.signum()
-    //                                 * (threshold + (processed.abs() - threshold) * ratio)
-    //                         } else {
-    //                             processed
-    //                         };
-    //
-    //                         // Bit crushing
-    //                         let bits = 5.0;
-    //                         let levels = 2.0_f32.powf(bits);
-    //                         processed = (processed * levels).round() / levels;
-    //
-    //                         *sample = processed * 0.7; // Scale down to prevent clipping
-    //                     } else {
-    //                         *sample = 0.0; // Silence when buffer is empty
-    //                     }
-    //                 }
-    //             }
-    //         },
-    //         |err| eprintln!("Audio stream error: {}", err),
-    //         None,
-    //     )?;
-    //
-    //     output_stream.play()?;
-    //     self.output_stream = Some(output_stream);
-    //
-    //     Ok(())
-    // }
+    pub fn stop(&mut self) {
+        if let Ok(mut buf) = self.buffer.lock() {
+            buf.clear();
+        }
+    }
 }
