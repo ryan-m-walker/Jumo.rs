@@ -1,56 +1,27 @@
-use futures::{
-    SinkExt, StreamExt,
-    stream::{SplitSink, SplitStream},
-};
-use serde::{Deserialize, Serialize};
+use futures::{SinkExt, StreamExt};
 use tempfile::TempPath;
-use tokio::{fs::File, io::AsyncReadExt, net::TcpStream, sync::mpsc};
+use tokio::{fs::File, io::AsyncReadExt, sync::mpsc};
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async,
+    connect_async,
     tungstenite::{Message, client::IntoClientRequest},
 };
 
-use crate::events::{AppEvent, TTSResult};
+use crate::{
+    events::{AppEvent, TTSResult},
+    services::elevenlabs::{
+        types::{
+            ElevenLabsSendTextMessage, ElevenLabsTranscription, VoiceSettings,
+            WebSocketInitMessage, WebSocketTextChunk, WsSink, WsStream,
+        },
+        voices::JULES_VOICE_ID,
+    },
+};
 
-const FLYNN_VOICE_ID: &str = "OZ5NFxPCh40uGDshxKOi";
-const KOTA_VOICE_ID: &str = "pvxGJdhknm00gMyYHtET";
-const ARCHER_VOICE_ID: &str = "Fahco4VZzobUeiPqni1S";
-const JULES_VOICE_ID: &str = "kIC4kfVqgGXGVwgAx81Z";
+mod types;
+mod voices;
 
 const OUTPUT_FORMAT: &str = "pcm_44100";
 const TTS_MODEL_ID: &str = "eleven_multilingual_v2";
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ElevenLabsTranscription {
-    text: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ElevenLabsSendTextMessage {
-    text: String,
-    model_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct VoiceSettings {
-    stability: f32,
-    similarity_boost: f32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct WebSocketInitMessage {
-    text: String,
-    voice_settings: VoiceSettings,
-    xi_api_key: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct WebSocketTextChunk {
-    text: String,
-}
-
-type WsSink = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
-type WsStream = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
 #[derive(Debug)]
 pub struct ElevenLabsService {
@@ -85,13 +56,12 @@ impl ElevenLabsService {
         let mut request = url.into_client_request()?;
         request.headers_mut().insert("xi-api-key", api_key.parse()?);
 
-        let Ok((ws_stream, resp)) = connect_async(request).await else {
+        let Ok((ws_stream, _)) = connect_async(request).await else {
             panic!("Failed to connect to elevenlabs");
         };
 
         let (mut ws_sink, ws_stream) = ws_stream.split();
 
-        // Send initialization message
         let init_message = WebSocketInitMessage {
             text: " ".to_string(), // Space to initialize
             voice_settings: VoiceSettings {
@@ -101,46 +71,33 @@ impl ElevenLabsService {
             xi_api_key: api_key.clone(),
         };
 
-        dbg!("Sending init message:", &init_message);
-
         let init_json = serde_json::to_string(&init_message)?;
-        // dbg!("Init JSON:", &init_json);
         ws_sink.send(Message::Text(init_json.into())).await?;
-        dbg!("Init message sent successfully");
 
-        // Store the split halves
         self.ws_sink = Some(ws_sink);
         self.ws_stream = Some(ws_stream);
 
-        // Start the read loop
         self.start_read_loop();
 
         Ok(())
     }
 
     fn start_read_loop(&mut self) {
-        dbg!("Starting read loop");
         if let Some(mut ws_stream) = self.ws_stream.take() {
             let event_sender = self.event_sender.clone();
 
             tokio::spawn(async move {
-                dbg!("Spawned read loop");
                 while let Some(msg) = ws_stream.next().await {
-                    dbg!("!!! Received message:", &msg);
                     match msg {
-                        Ok(Message::Binary(data)) => {
-                            // Handle audio data
-                            dbg!("Received audio data: {} bytes", data.len());
-                        }
                         Ok(Message::Text(text)) => {
-                            dbg!("Received text:", &text);
+                            // let json: WebSocketAudioOutput = serde_json::from_str(&text).unwrap();
+                            // let audio_bytes = BASE64_STANDARD.decode(json.audio).unwrap().bytes();
                         }
-                        Ok(Message::Close(frame)) => {
-                            dbg!("WebSocket closed:", frame);
+                        Ok(Message::Close(_)) => {
                             break;
                         }
                         Ok(msg) => {
-                            dbg!("Other message type:", msg);
+                            panic!("Unexpected message type: {:?}", msg);
                         }
                         Err(e) => {
                             eprintln!("WebSocket error: {}", e);
@@ -148,24 +105,15 @@ impl ElevenLabsService {
                         }
                     }
                 }
-                dbg!("Read loop ended");
             });
         }
     }
 
     pub async fn send_text(&mut self, text: &str) -> Result<(), anyhow::Error> {
         if let Some(ws_sink) = &mut self.ws_sink {
-            if text.is_empty() {
-                let text_chunk = WebSocketTextChunk {
-                    text: String::from(""),
-                };
-                let json = serde_json::to_string(&text_chunk)?;
-                ws_sink.send(Message::Text(json.into())).await?;
-                return Ok(());
-            }
-
             let text_chunk = WebSocketTextChunk {
                 text: text.to_string(),
+                flush: Some(true),
             };
             let json = serde_json::to_string(&text_chunk)?;
             ws_sink.send(Message::Text(json.into())).await?;

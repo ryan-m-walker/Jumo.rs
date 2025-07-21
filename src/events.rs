@@ -1,10 +1,12 @@
+use std::str::Bytes;
+
 use tempfile::TempPath;
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::Bytes;
+use tokio_tungstenite::tungstenite;
 
 #[derive(Debug, Clone)]
 pub struct TTSResult {
-    pub audio_bytes: Bytes,
+    pub audio_bytes: tungstenite::Bytes,
     pub duration_seconds: f64,
 }
 
@@ -31,6 +33,11 @@ pub struct LLMMessageCompletedPayload {
     pub full_text: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct TextProcessorChunkPayload {
+    pub text: String,
+}
+
 #[derive(Debug)]
 pub enum AppEvent {
     // Audio events
@@ -52,6 +59,8 @@ pub enum AppEvent {
     LLMMessageDelta(LLMMessageDeltaPayload),
     LLMMessageCompleted(LLMMessageCompletedPayload),
     LLMRequestFailed(String),
+
+    TextProcessorChunk(TextProcessorChunkPayload),
 
     // Text to speech events
     TTSStarted,

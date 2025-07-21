@@ -47,12 +47,11 @@ impl Widget for MainWidget<'_> {
         for message in &messages[messages_len.saturating_sub(2)..] {
             match &message.content {
                 MessageContent::User { text } => {
-                    lines.push(Line::from("[User]:").style(Style::new().yellow()));
                     lines.push(Line::from(text.clone()));
+                    lines.push(Line::from(""));
                 }
                 MessageContent::Assistant { text } => {
-                    lines.push(Line::from("[Assistant]:").style(Style::new().light_blue()));
-                    lines.push(Line::from(text.clone()));
+                    lines.push(Line::from(text.clone()).style(Style::new().yellow()));
                 }
                 MessageContent::Error { text } => {
                     lines.push(Line::from("[Error]:").style(Style::new().red()));

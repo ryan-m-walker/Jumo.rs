@@ -1,9 +1,8 @@
-use std::{io::Stdout, sync::Arc, time::Duration};
+use std::{io::Stdout, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{Terminal, prelude::CrosstermBackend};
-use tokio::time::sleep_until;
 use uuid::Uuid;
 
 use crate::{
@@ -13,6 +12,7 @@ use crate::{
         models::{Message, MessageContent, MessageType},
     },
     events::EventBus,
+    text_processor::TextProcessor,
     widgets::main::MainWidget,
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
@@ -28,6 +28,7 @@ pub struct App {
     elevenlabs: ElevenLabsService,
     audio_recorder: AudioRecorder,
     audio_player: AudioPlayer,
+    text_processor: TextProcessor,
     terminal: Terminal<CrosstermBackend<Stdout>>,
     state: AppState,
 }
@@ -35,30 +36,30 @@ pub struct App {
 const FRAMES_PER_SECOND: f32 = 60.0;
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(terminal: Terminal<CrosstermBackend<Stdout>>) -> Self {
         let db = Database::new();
         let event_bus = EventBus::new();
         let anthropic = AnthropicService::new(event_bus.sender());
         let elevenlabs = ElevenLabsService::new(event_bus.sender());
         let audio_recorder = AudioRecorder::new(event_bus.sender());
         let audio_player = AudioPlayer::new(event_bus.sender());
+        let text_processor = TextProcessor::new(event_bus.sender());
 
         Self {
+            terminal,
             event_bus,
             db,
             anthropic,
             elevenlabs,
             audio_recorder,
             audio_player,
-            terminal: ratatui::init(),
+            text_processor,
             state: AppState::default(),
         }
     }
 
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
         self.state.is_app_running = true;
-
-        ratatui::restore();
 
         self.db.init()?;
         self.elevenlabs.connect().await?;
@@ -159,6 +160,7 @@ impl App {
             }
             AppEvent::LLMMessageDelta(payload) => {
                 self.state.on_llm_text_delta(payload);
+                self.text_processor.process_delta(&payload.text).await?;
             }
             AppEvent::LLMMessageCompleted(payload) => {
                 self.state.is_llm_message_running = false;
@@ -167,13 +169,19 @@ impl App {
                     self.db.insert_message(message)?;
                 }
 
-                if let Err(error) = self.elevenlabs.synthesize(&payload.full_text).await {
-                    self.state.error = Some(error.to_string());
-                };
+                self.text_processor.finalize().await?;
+
+                // if let Err(error) = self.elevenlabs.synthesize(&payload.full_text).await {
+                //     self.state.error = Some(error.to_string());
+                // };
             }
             AppEvent::LLMRequestFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_llm_message_running = false;
+            }
+
+            AppEvent::TextProcessorChunk(payload) => {
+                // self.elevenlabs.send_text(&payload.text).await?;
             }
 
             // tts events

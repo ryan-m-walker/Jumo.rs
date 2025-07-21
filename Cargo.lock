@@ -1708,6 +1708,7 @@ name = "robo_rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "cpal",
  "crossbeam-channel",
  "crossterm 0.29.0",

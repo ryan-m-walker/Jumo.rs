@@ -13,7 +13,6 @@ use crate::events::AppEvent;
 pub struct AudioPlayer {
     event_sender: mpsc::Sender<AppEvent>,
     output_stream: Option<cpal::Stream>,
-    is_running: bool,
     cancel_token: Option<CancellationToken>,
 }
 
@@ -22,7 +21,6 @@ impl AudioPlayer {
         Self {
             event_sender,
             output_stream: None,
-            is_running: false,
             cancel_token: None,
         }
     }
@@ -65,13 +63,13 @@ impl AudioPlayer {
                 move |data: &mut [f32], _| {
                     for sample in data {
                         let mut s = samples_clone.get(sample_index).copied().unwrap_or(0.0);
-                        
+
                         // Original clean audio (uncomment to revert effects):
                         // *sample = s; sample_index += 1; continue;
 
                         // Apply robotic distortion effects
                         s *= 2.5; // Moderate amplification
-                        
+
                         // Smoother compression with more squashing
                         let threshold = 0.2;
                         let ratio = 0.05; // Very high compression ratio
@@ -80,12 +78,12 @@ impl AudioPlayer {
                         } else {
                             s
                         };
-                        
+
                         // Bit crushing but slightly higher for less hiss
                         let bits = 5.0; // 5-bit instead of 4-bit
                         let levels = 2.0_f32.powf(bits);
                         s = (s * levels).round() / levels;
-                        
+
                         // Low-pass filter to reduce high-frequency hiss
                         if sample_index > 0 {
                             let prev = samples_clone.get(sample_index - 1).unwrap_or(&0.0);
