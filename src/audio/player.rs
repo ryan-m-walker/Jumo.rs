@@ -34,7 +34,7 @@ impl AudioPlayer {
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), anyhow::Error> {
+    pub fn start(&mut self) -> Result<(), anyhow::Error> {
         let host = cpal::default_host();
 
         let Some(device) = host.default_output_device() else {

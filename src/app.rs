@@ -67,7 +67,7 @@ impl App {
 
         self.db.init()?;
         self.elevenlabs.connect().await?;
-        self.audio_player.start().await?;
+        self.audio_player.start()?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
