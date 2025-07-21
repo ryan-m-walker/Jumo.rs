@@ -63,6 +63,7 @@ impl App {
 
         self.db.init()?;
         self.elevenlabs.connect().await?;
+        self.audio_player.start().await?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
@@ -164,29 +165,29 @@ impl App {
             }
             AppEvent::LLMMessageCompleted(payload) => {
                 self.state.is_llm_message_running = false;
+                self.elevenlabs.end_stream().await?;
 
                 if let Some(message) = self.state.get_message(&payload.message_id) {
                     self.db.insert_message(message)?;
                 }
-
-                self.text_processor.finalize().await?;
-
-                // if let Err(error) = self.elevenlabs.synthesize(&payload.full_text).await {
-                //     self.state.error = Some(error.to_string());
-                // };
             }
             AppEvent::LLMRequestFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_llm_message_running = false;
             }
 
-            AppEvent::TextProcessorChunk(payload) => {
-                // self.elevenlabs.send_text(&payload.text).await?;
+            AppEvent::TextProcessorTextChunk(payload) => {
+                self.elevenlabs.send_text(&payload.text).await?;
             }
 
             // tts events
             AppEvent::TTSStarted => {
                 self.state.is_tts_running = true;
+            }
+            AppEvent::TTSChunk(audio_bytes) => {
+                if let Err(e) = self.audio_player.push_audio_chunk(audio_bytes) {
+                    self.state.error = Some(e.to_string());
+                }
             }
             AppEvent::TTSCompleted(result) => {
                 self.state.is_tts_running = false;

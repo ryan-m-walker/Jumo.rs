@@ -1,8 +1,15 @@
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use cpal::{
     BufferSize, SampleRate, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
+};
+use ringbuf::{
+    HeapRb,
+    traits::{Consumer, Producer},
 };
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
@@ -10,19 +17,61 @@ use tokio_util::sync::CancellationToken;
 
 use crate::events::AppEvent;
 
+type AudioBuffer = Arc<Mutex<HeapRb<f32>>>;
+
 pub struct AudioPlayer {
     event_sender: mpsc::Sender<AppEvent>,
     output_stream: Option<cpal::Stream>,
     cancel_token: Option<CancellationToken>,
+    buffer: AudioBuffer,
 }
 
 impl AudioPlayer {
     pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
+        let buffer_size = 48000 * 10;
+
         Self {
             event_sender,
             output_stream: None,
             cancel_token: None,
+            buffer: Arc::new(Mutex::new(HeapRb::new(buffer_size))),
         }
+    }
+
+    pub async fn start(&mut self) -> Result<(), anyhow::Error> {
+        let host = cpal::default_host();
+
+        let Some(device) = host.default_output_device() else {
+            return Err(anyhow::anyhow!("No audio device found"));
+        };
+
+        let config = StreamConfig {
+            channels: 1,
+            sample_rate: SampleRate(44100),
+            buffer_size: BufferSize::Default,
+        };
+
+        let buffer = self.buffer.clone();
+
+        let output_stream = device.build_output_stream(
+            &config,
+            move |data: &mut [f32], _| {
+                let mut buffer = buffer.lock().unwrap();
+                for sample in data.iter_mut() {
+                    *sample = buffer.try_pop().unwrap_or(0.0);
+                }
+            },
+            move |err| {
+                eprintln!("an error occurred on stream: {}", err);
+            },
+            None,
+        )?;
+
+        self.output_stream = Some(output_stream);
+        let stream = self.output_stream.as_mut().unwrap();
+        stream.play()?;
+
+        Ok(())
     }
 
     pub async fn play(
@@ -128,7 +177,11 @@ impl AudioPlayer {
         Ok(())
     }
 
-    pub fn stop(&mut self) {
+    pub fn stop(&mut self) -> Result<(), anyhow::Error> {
+        if let Ok(mut buf) = self.buffer.lock() {
+            buf.clear();
+        }
+
         if let Some(stream) = &self.output_stream {
             stream.pause().unwrap();
             self.output_stream = None;
@@ -138,5 +191,80 @@ impl AudioPlayer {
             token.cancel();
             self.cancel_token = None;
         }
+
+        Ok(())
     }
+
+    pub fn push_audio_chunk(&mut self, audio_bytes: &Bytes) -> Result<(), anyhow::Error> {
+        let samples: Vec<f32> = audio_bytes
+            .chunks_exact(2)
+            .map(|chunk| {
+                let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+                sample as f32 / i16::MAX as f32
+            })
+            .collect();
+
+        if let Ok(mut buf) = self.buffer.lock() {
+            buf.push_slice(&samples);
+        }
+
+        Ok(())
+    }
+
+    // pub fn start_streaming(&mut self) -> Result<(), anyhow::Error> {
+    //     if self.output_stream.is_some() {
+    //         return Ok(()); // Already streaming
+    //     }
+    //
+    //     let host = cpal::default_host();
+    //     let device = host.default_output_device().unwrap();
+    //
+    //     let config = StreamConfig {
+    //         channels: 1,
+    //         sample_rate: SampleRate(44100),
+    //         buffer_size: BufferSize::Default,
+    //     };
+    //
+    //     let buffer_clone = Arc::clone(&self.buffer);
+    //
+    //     let output_stream = device.build_output_stream(
+    //         &config,
+    //         move |data: &mut [f32], _| {
+    //             if let Ok(mut buf) = buffer_clone.lock() {
+    //                 for sample in data {
+    //                     if let Some(s) = buf.pop() {
+    //                         // Apply robotic distortion effects
+    //                         let mut processed = s * 2.5; // Moderate amplification
+    //
+    //                         // Smoother compression with more squashing
+    //                         let threshold = 0.2;
+    //                         let ratio = 0.05; // Very high compression ratio
+    //                         processed = if processed.abs() > threshold {
+    //                             processed.signum()
+    //                                 * (threshold + (processed.abs() - threshold) * ratio)
+    //                         } else {
+    //                             processed
+    //                         };
+    //
+    //                         // Bit crushing
+    //                         let bits = 5.0;
+    //                         let levels = 2.0_f32.powf(bits);
+    //                         processed = (processed * levels).round() / levels;
+    //
+    //                         *sample = processed * 0.7; // Scale down to prevent clipping
+    //                     } else {
+    //                         *sample = 0.0; // Silence when buffer is empty
+    //                     }
+    //                 }
+    //             }
+    //         },
+    //         |err| eprintln!("Audio stream error: {}", err),
+    //         None,
+    //     )?;
+    //
+    //     output_stream.play()?;
+    //     self.output_stream = Some(output_stream);
+    //
+    //     Ok(())
+    // }
 }

@@ -1,17 +1,21 @@
+use base64::{Engine, prelude::BASE64_STANDARD};
 use futures::{SinkExt, StreamExt};
 use tempfile::TempPath;
+use tokio::fs;
 use tokio::{fs::File, io::AsyncReadExt, sync::mpsc};
+use tokio_tungstenite::tungstenite::Bytes;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest},
 };
 
+use crate::services::elevenlabs::types::WebSocketEndMessage;
 use crate::{
-    events::{AppEvent, TTSResult},
+    events::AppEvent,
     services::elevenlabs::{
         types::{
-            ElevenLabsSendTextMessage, ElevenLabsTranscription, VoiceSettings,
-            WebSocketInitMessage, WebSocketTextChunk, WsSink, WsStream,
+            ElevenLabsTranscription, VoiceSettings, WebSocketAudioOutput, WebSocketInitMessage,
+            WebSocketTextChunk, WsSink, WsStream,
         },
         voices::JULES_VOICE_ID,
     },
@@ -21,7 +25,6 @@ mod types;
 mod voices;
 
 const OUTPUT_FORMAT: &str = "pcm_44100";
-const TTS_MODEL_ID: &str = "eleven_multilingual_v2";
 
 #[derive(Debug)]
 pub struct ElevenLabsService {
@@ -90,17 +93,32 @@ impl ElevenLabsService {
                 while let Some(msg) = ws_stream.next().await {
                     match msg {
                         Ok(Message::Text(text)) => {
-                            // let json: WebSocketAudioOutput = serde_json::from_str(&text).unwrap();
-                            // let audio_bytes = BASE64_STANDARD.decode(json.audio).unwrap().bytes();
+                            let json = match serde_json::from_str::<WebSocketAudioOutput>(&text) {
+                                Ok(json) => json,
+                                Err(e) => {
+                                    // TODO: better error handling
+                                    fs::write("error.txt", format!("{text}")).await.unwrap();
+                                    panic!("Failed to deserialize JSON: {e}");
+                                }
+                            };
+
+                            if let Some(audio) = json.audio {
+                                let decoded = BASE64_STANDARD.decode(audio).unwrap();
+                                let audio_bytes = Bytes::from(decoded);
+                                event_sender
+                                    .send(AppEvent::TTSChunk(audio_bytes))
+                                    .await
+                                    .unwrap();
+                            }
                         }
                         Ok(Message::Close(_)) => {
                             break;
                         }
                         Ok(msg) => {
-                            panic!("Unexpected message type: {:?}", msg);
+                            panic!("Unexpected message type: {msg}");
                         }
                         Err(e) => {
-                            eprintln!("WebSocket error: {}", e);
+                            eprintln!("WebSocket error: {e}");
                             break;
                         }
                     }
@@ -114,6 +132,17 @@ impl ElevenLabsService {
             let text_chunk = WebSocketTextChunk {
                 text: text.to_string(),
                 flush: Some(true),
+            };
+            let json = serde_json::to_string(&text_chunk)?;
+            ws_sink.send(Message::Text(json.into())).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn end_stream(&mut self) -> Result<(), anyhow::Error> {
+        if let Some(ws_sink) = &mut self.ws_sink {
+            let text_chunk = WebSocketEndMessage {
+                text: "".to_string(),
             };
             let json = serde_json::to_string(&text_chunk)?;
             ws_sink.send(Message::Text(json.into())).await?;
@@ -181,71 +210,6 @@ impl ElevenLabsService {
 
             event_sender
                 .send(AppEvent::TranscriptionCompleted(text))
-                .await
-                .unwrap();
-        });
-
-        Ok(())
-    }
-
-    pub async fn synthesize(&mut self, text: &str) -> Result<(), anyhow::Error> {
-        self.is_running = true;
-        self.event_sender.send(AppEvent::TTSStarted).await?;
-
-        let event_sender = self.event_sender.clone();
-        let api_key = self.api_key.clone();
-        let text = text.to_string();
-
-        tokio::spawn(async move {
-            let client = reqwest::Client::new();
-            let body = ElevenLabsSendTextMessage {
-                text,
-                model_id: String::from(TTS_MODEL_ID),
-            };
-
-            let url = format!(
-                "https://api.elevenlabs.io/v1/text-to-speech/{JULES_VOICE_ID}?output_format={OUTPUT_FORMAT}"
-            );
-
-            let speech_resp = client
-                .post(url)
-                .header("xi-api-key", &api_key)
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send()
-                .await;
-
-            let Ok(speech_resp) = speech_resp else {
-                let message = String::from("Failed to send text to elevenlabs");
-                event_sender
-                    .send(AppEvent::TTSFailed(message))
-                    .await
-                    .unwrap();
-                return;
-            };
-
-            // TODO: check header content type to ensure successful response
-
-            let Ok(audio_bytes) = speech_resp.bytes().await else {
-                let message = String::from("Failed to get audio bytes from elevenlabs");
-                event_sender
-                    .send(AppEvent::TTSFailed(message))
-                    .await
-                    .unwrap();
-                return;
-            };
-
-            let bytes_per_sample = 2; // 16-bit = 2 bytes
-            let channels = 1;
-            let sample_rate = 44100;
-            let duration_seconds =
-                audio_bytes.len() as f64 / (bytes_per_sample * channels * sample_rate) as f64;
-
-            event_sender
-                .send(AppEvent::TTSCompleted(TTSResult {
-                    audio_bytes,
-                    duration_seconds,
-                }))
                 .await
                 .unwrap();
         });

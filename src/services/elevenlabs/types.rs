@@ -34,8 +34,15 @@ pub struct WebSocketTextChunk {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct WebSocketEndMessage {
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WebSocketAudioOutput {
-    pub audio: String, // Base64 encoded
+    pub audio: Option<String>, // Base64 encoded
+    #[serde(rename = "isFinal")]
+    pub is_final: Option<bool>,
 }
 
 pub type WsSink = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
