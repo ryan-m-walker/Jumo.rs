@@ -28,7 +28,7 @@ impl AudioRecorder {
     }
 
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
-        if self.input_stream.is_some() {
+        if self.is_playing {
             return Ok(());
         }
 

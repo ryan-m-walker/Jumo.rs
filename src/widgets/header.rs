@@ -14,8 +14,7 @@ impl Widget for Header {
             .constraints([Constraint::Fill(1), Constraint::Fill(1)].as_ref())
             .split(area);
 
-        let block = Block::default().padding(Padding::horizontal(1));
-        let title = Paragraph::new("Fynn 0.1").yellow().block(block).bold();
+        let title = Paragraph::new("Fynn 0.1.0").yellow().bold();
         title.render(chunks[0], buf);
 
         let block = Block::default().padding(Padding::horizontal(1));

@@ -13,7 +13,6 @@ pub struct StatusLine<'a> {
 
 struct Status {
     code: String,
-    color: Color,
     active: bool,
 }
 
@@ -26,27 +25,22 @@ impl<'a> StatusLine<'a> {
         vec![
             Status {
                 code: String::from("REC"),
-                color: Color::Red,
                 active: self.state.is_audio_recording_running,
             },
             Status {
                 code: String::from("TRN"),
-                color: Color::Yellow,
                 active: self.state.is_audio_transcription_running,
             },
             Status {
                 code: String::from("GEN"),
-                color: Color::Yellow,
                 active: self.state.is_llm_message_running,
             },
             Status {
                 code: String::from("TTS"),
-                color: Color::Green,
                 active: self.state.is_tts_running,
             },
             Status {
                 code: String::from("PLY"),
-                color: Color::Green,
                 active: self.state.is_audio_playback_running,
             },
         ]
@@ -86,28 +80,7 @@ impl Widget for StatusLine<'_> {
                 .style(Style::new().fg(fg).bg(bg))
                 .block(block);
 
-            // if status.active {
-            //     code.style(Style::new().bg(self.get_bg_color()))
-            // } else {
-            //     code
-            // }
             code.render(chunks[i], buf);
         }
-
-        // let blocks = self.get_statuses()
-        //     .iter()
-        //     .map(|status| {
-        //         let block = Block::default()
-        //             .borders(BorderType::Rounded)
-        //             .border_style(Style::new().fg(status.color))
-        //             .title(status.code.clone())
-        //             .padding(Padding::uniform(1));
-        //
-        //         if status.active {
-        //             block.style(Style::new().bg(self.get_bg_color()))
-        //         } else {
-        //             block
-        //         }
-        //     })
     }
 }

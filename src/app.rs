@@ -17,7 +17,7 @@ use crate::{
     events::EventBus,
     state::View,
     text_processor::TextProcessor,
-    widgets::main::MainWidget,
+    widgets::{app_layout::AppLayout, main::MainWidget},
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
 use crate::{
@@ -124,13 +124,13 @@ impl App {
                     created_at: None,
                 };
 
-                self.db.insert_message(&message)?;
-                self.state.messages.push(message);
-
                 let result = self
                     .anthropic
                     .send_message(text, &self.state.messages)
                     .await;
+
+                self.db.insert_message(&message)?;
+                self.state.messages.push(message);
 
                 if let Err(error) = result {
                     self.state.error = Some(error.to_string());
@@ -247,7 +247,7 @@ impl App {
 
     fn render(&mut self) -> Result<(), anyhow::Error> {
         self.terminal
-            .draw(|frame| frame.render_widget(MainWidget::new(&self.state), frame.area()))?;
+            .draw(|frame| frame.render_widget(AppLayout::new(&self.state), frame.area()))?;
         Ok(())
     }
 

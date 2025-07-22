@@ -12,7 +12,7 @@ pub enum MessageType {
     ToolResult,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MessageContent {
     User {
         text: String,
