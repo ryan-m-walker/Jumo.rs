@@ -3,10 +3,10 @@ use ratatui::{
     layout::Rect,
     style::{Color, Style},
     text::Line,
-    widgets::{Block, BorderType, Paragraph, Widget},
+    widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
-use crate::state::AppState;
+use crate::{database::models::log::LogLevel, state::AppState};
 
 pub struct LogsLayoutWidget<'a> {
     state: &'a AppState,
@@ -28,9 +28,28 @@ impl Widget for LogsLayoutWidget<'_> {
             .state
             .logs
             .iter()
-            .map(|log| Line::from(log.text.clone()))
+            .map(|log| {
+                let label = match log.level {
+                    LogLevel::Info => "INFO",
+                    LogLevel::Warn => "WARN",
+                    LogLevel::Error => "ERROR",
+                };
+
+                let line = format!("[{label}] {}", log.text);
+
+                let style = match log.level {
+                    LogLevel::Info => Style::default().fg(Color::Reset),
+                    LogLevel::Warn => Style::default().fg(Color::Yellow),
+                    LogLevel::Error => Style::default().fg(Color::Red),
+                };
+
+                Line::from(line.to_string()).style(style)
+            })
             .collect::<Vec<_>>();
 
-        Paragraph::new(log_lines).block(block).render(area, buf);
+        Paragraph::new(log_lines)
+            .block(block)
+            .wrap(Wrap { trim: true })
+            .render(area, buf);
     }
 }

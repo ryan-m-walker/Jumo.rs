@@ -10,7 +10,7 @@ use crate::{
     database::{
         Database,
         models::{
-            log::Log,
+            log::{Log, LogLevel},
             message::{Message, MessageContent, MessageType},
         },
     },
@@ -66,11 +66,12 @@ impl App {
         self.state.is_app_running = true;
 
         self.db.init()?;
-        self.elevenlabs.connect().await?;
         self.audio_player.start()?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
+
+        self.state.log(Log::new("App started", LogLevel::Info));
 
         let period = Duration::from_secs_f32(1.0 / FRAMES_PER_SECOND);
         let mut interval = tokio::time::interval(period);
@@ -91,25 +92,37 @@ impl App {
         match event {
             // audio events
             AppEvent::AudioRecordingStarted => {
+                self.state
+                    .log(Log::new("Audio recording started", LogLevel::Info));
                 self.state.is_audio_recording_running = true;
             }
             AppEvent::AudioRecordingCompleted(temp_path) => {
+                self.state
+                    .log(Log::new("Audio recording completed", LogLevel::Info));
                 self.state.is_audio_recording_running = false;
 
                 if let Err(error) = self.elevenlabs.transcribe(temp_path).await {
+                    self.state
+                        .log(Log::new("Audio recording failed", LogLevel::Error));
                     self.state.error = Some(error.to_string());
                 }
             }
             AppEvent::AudioRecordingFailed(error) => {
+                self.state
+                    .log(Log::new("Audio recording failed", LogLevel::Error));
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_recording_running = false;
             }
             AppEvent::AudioPlaybackError(error) => {
+                self.state
+                    .log(Log::new("Audio playback error", LogLevel::Error));
                 self.state.error = Some(error.to_string());
             }
 
             // transcription events
             AppEvent::TranscriptionStarted => {
+                self.state
+                    .log(Log::new("Transcription started", LogLevel::Info));
                 self.state.is_audio_transcription_running = true;
             }
             AppEvent::TranscriptionCompleted(text) => {
@@ -132,18 +145,28 @@ impl App {
                 self.db.insert_message(&message)?;
                 self.state.messages.push(message);
 
+                self.state
+                    .log(Log::new("Transcription complete", LogLevel::Info));
+
                 if let Err(error) = result {
                     self.state.error = Some(error.to_string());
+                    self.state
+                        .log(Log::new("Transcription failed", LogLevel::Error));
                 }
             }
             AppEvent::TranscriptionFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_transcription_running = false;
+                self.state
+                    .log(Log::new("Transcription failed", LogLevel::Error));
             }
 
             // llm events
             AppEvent::LLMMessageStarted(payload) => {
                 self.state.is_llm_message_running = true;
+
+                self.state
+                    .log(Log::new("LLM message started", LogLevel::Info));
 
                 let message = Message {
                     id: payload.message_id.clone(),
@@ -155,6 +178,7 @@ impl App {
                 };
 
                 self.state.messages.push(message);
+                self.elevenlabs.start_stream().await?;
             }
             AppEvent::LLMMessageDelta(payload) => {
                 self.state.on_llm_text_delta(payload);
@@ -163,29 +187,48 @@ impl App {
             AppEvent::LLMMessageCompleted(payload) => {
                 self.state.is_llm_message_running = false;
 
+                self.state
+                    .log(Log::new("LLM message completed", LogLevel::Info));
+
                 self.text_processor.flush().await?;
-                self.elevenlabs.end_stream().await?;
 
                 if let Some(message) = self.state.get_message(&payload.message_id) {
                     self.db.insert_message(message)?;
                 }
             }
             AppEvent::LLMRequestFailed(error) => {
+                self.state
+                    .log(Log::new("LLM request failed", LogLevel::Error));
                 self.state.error = Some(error.to_string());
                 self.state.is_llm_message_running = false;
             }
 
             AppEvent::TextProcessorTextChunk(payload) => {
+                self.state
+                    .log(Log::new("Text processor text chunk", LogLevel::Info));
                 self.elevenlabs.send_text(&payload.text).await?;
+            }
+            AppEvent::TextProcessorFlushed => {
+                self.state
+                    .log(Log::new("Text processor flushed", LogLevel::Info));
+                self.elevenlabs.end_stream().await?;
             }
 
             // tts events
             AppEvent::TTSChunk(audio_bytes) => {
                 if let Err(e) = self.audio_player.push_audio_chunk(audio_bytes) {
+                    self.state
+                        .log(Log::new("TTS chunk failed", LogLevel::Error));
                     self.state.error = Some(e.to_string());
                 }
             }
             AppEvent::TTSError(error) => {
+                self.state.log(Log::new("TTS error", LogLevel::Error));
+                self.state.error = Some(error.to_string());
+                self.state.is_tts_running = false;
+            }
+            AppEvent::TTSFailed(error) => {
+                self.state.log(Log::new("TTS failed", LogLevel::Error));
                 self.state.error = Some(error.to_string());
                 self.state.is_tts_running = false;
             }

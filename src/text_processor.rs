@@ -61,6 +61,9 @@ impl TextProcessor {
             self.event_sender
                 .send(AppEvent::TextProcessorTextChunk(payload))
                 .await?;
+            self.event_sender
+                .send(AppEvent::TextProcessorFlushed)
+                .await?;
 
             self.pending_chunk.clear();
         }

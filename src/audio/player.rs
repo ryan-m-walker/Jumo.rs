@@ -9,7 +9,6 @@ use ringbuf::{
     traits::{Consumer, Producer},
 };
 use tokio_tungstenite::tungstenite::Bytes;
-use tokio_util::sync::CancellationToken;
 
 use crate::events::AppEvent;
 
@@ -18,7 +17,6 @@ type AudioBuffer = Arc<Mutex<HeapRb<f32>>>;
 pub struct AudioPlayer {
     event_sender: tokio::sync::mpsc::Sender<AppEvent>,
     output_stream: Option<cpal::Stream>,
-    cancel_token: Option<CancellationToken>,
     buffer: AudioBuffer,
 }
 
@@ -29,7 +27,6 @@ impl AudioPlayer {
         Self {
             event_sender,
             output_stream: None,
-            cancel_token: None,
             buffer: Arc::new(Mutex::new(HeapRb::new(buffer_size))),
         }
     }

@@ -60,10 +60,12 @@ pub enum AppEvent {
     LLMRequestFailed(String),
 
     TextProcessorTextChunk(TextProcessorChunkEventPayload),
+    TextProcessorFlushed,
 
     // Text to speech events
     TTSChunk(Bytes),
     TTSError(String),
+    TTSFailed(String),
 
     Log(LogEventPayload),
 }

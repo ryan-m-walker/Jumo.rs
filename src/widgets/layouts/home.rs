@@ -1,7 +1,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
     text::Line,
     widgets::{Block, BorderType, Padding, Paragraph, Widget, Wrap},
 };
@@ -23,6 +23,14 @@ impl Widget for HomeLayoutWidget<'_> {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(Color::Yellow));
+
+        if let Some(err) = &self.state.error {
+            let error_message = format!("Error: {err}");
+            Paragraph::new(error_message.lines().map(Line::from).collect::<Vec<_>>())
+                .style(Style::default().fg(Color::Red).bg(Color::Black).bold())
+                .render(area, buf);
+            return;
+        }
 
         let mut assistant_message: Option<String> = None;
 

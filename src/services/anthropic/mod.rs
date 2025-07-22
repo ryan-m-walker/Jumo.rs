@@ -121,6 +121,13 @@ impl AnthropicService {
                 match event {
                     Ok(event) => {
                         if event.data.is_empty() {
+                            event_sender
+                                .send(AppEvent::Log(LogEventPayload {
+                                    level: LogLevel::Info,
+                                    message: String::from("Anthropic stream ended"),
+                                }))
+                                .await
+                                .unwrap();
                             continue;
                         }
 

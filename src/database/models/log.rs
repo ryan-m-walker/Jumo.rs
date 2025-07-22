@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::database::models::Model;
 
@@ -16,6 +17,17 @@ pub struct Log {
     pub text: String,
     pub level: LogLevel,
     pub timestamp: String,
+}
+
+impl Log {
+    pub fn new(text: &str, level: LogLevel) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            text: text.to_string(),
+            level,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
 }
 
 impl Model for Log {
