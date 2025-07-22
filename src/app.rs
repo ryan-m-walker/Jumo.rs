@@ -17,7 +17,7 @@ use crate::{
     events::EventBus,
     state::View,
     text_processor::TextProcessor,
-    widgets::{app_layout::AppLayout, main::MainWidget},
+    widgets::app_layout::AppLayout,
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
 use crate::{

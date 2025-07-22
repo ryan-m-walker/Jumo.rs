@@ -33,7 +33,13 @@ impl Widget for HomeLayoutWidget<'_> {
             }
         }
 
-        Paragraph::new(Line::from(assistant_message.unwrap_or_default()))
+        let assistant_message = assistant_message.unwrap_or_default();
+        let lines = assistant_message
+            .split('\n')
+            .map(Line::from)
+            .collect::<Vec<_>>();
+
+        Paragraph::new(lines)
             .block(block)
             .wrap(Wrap { trim: true })
             .render(area, buf);
