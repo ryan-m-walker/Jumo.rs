@@ -1,11 +1,10 @@
 use tempfile::TempPath;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::{
-    database::models::{log::LogLevel, message::Message},
-    services::anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
-    state::{AppState, View},
+    database::models::log::LogLevel, services::anthropic::types::AnthropicMessageStreamEvent,
+    state::View,
 };
 
 #[derive(Debug, Clone)]
@@ -65,7 +64,9 @@ pub enum AppEvent {
     // Audio events
     AudioRecordingStarted,
     AudioRecordingCompleted(TempPath),
+    /// There was an error recording the audio causing the recording to stop
     AudioRecordingFailed(String),
+    /// There was an error playing the audio but it did not stop the recording
     AudioPlaybackError(String),
 
     AudioSetInputDevice(String),

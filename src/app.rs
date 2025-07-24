@@ -286,7 +286,7 @@ impl App {
                             let string_input = input.to_string();
 
                             let result = ToolType::execute_tool(
-                                &name,
+                                name,
                                 &string_input,
                                 &self.state,
                                 self.event_bus.sender(),

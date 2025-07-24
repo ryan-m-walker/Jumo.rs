@@ -6,9 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     database::models::{
         log::Log,
-        message::{ContentBlock, Message, Role},
+        message::{Message, Role},
     },
-    events::LLMMessageDeltaEventPayload,
     widgets::views::{home::HomeViewState, logs::LogsViewState},
 };
 
@@ -16,18 +15,6 @@ use crate::{
 pub enum Speaker {
     User,
     Assistant,
-}
-
-#[derive(Debug, Clone)]
-pub struct TranscriptMessage {
-    pub id: String,
-    pub speaker: Speaker,
-    pub text: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct TranscriptError {
-    pub text: String,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

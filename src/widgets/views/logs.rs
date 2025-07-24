@@ -5,7 +5,6 @@ use ratatui::{
     text::Line,
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
-use tui_scrollview::{ScrollView, ScrollViewState};
 
 use crate::{
     database::models::log::{Log, LogLevel},
@@ -15,7 +14,6 @@ use crate::{
 #[derive(Default, Debug, Clone)]
 pub struct LogsViewState {
     pub logs: Vec<Log>,
-    pub scroll_view_state: ScrollViewState,
 }
 
 pub struct LogsViewWidget<'a> {

@@ -40,7 +40,7 @@ impl Model for Log {
                 timestamp TEXT NOT NULL
             )",
             (),
-        );
+        )?;
 
         Ok(())
     }
