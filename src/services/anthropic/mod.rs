@@ -28,11 +28,7 @@ impl AnthropicService {
         Self { event_sender }
     }
 
-    pub async fn send_message(
-        &mut self,
-        message: &str,
-        messages: &[Message],
-    ) -> Result<(), anyhow::Error> {
+    pub async fn prompt(&mut self, messages: &[Message]) -> Result<(), anyhow::Error> {
         let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
             panic!("ANTHROPIC_API_KEY is not set");
         };
@@ -56,19 +52,12 @@ impl AnthropicService {
             });
         }
 
-        self.event_sender
-            .send(AppEvent::Log(LogEventPayload {
-                level: LogLevel::Info,
-                message: format!("Sending message to anthropic: {message}"),
-            }))
-            .await?;
-
-        claude_messages.push(AnthropicMessage {
-            role: Role::User,
-            content: vec![ContentBlock::Text {
-                text: message.to_string(),
-            }],
-        });
+        // self.event_sender
+        //     .send(AppEvent::Log(LogEventPayload {
+        //         level: LogLevel::Info,
+        //         message: format!("Sending message to anthropic: {message}"),
+        //     }))
+        //     .await?;
 
         let system = SystemPrompt::get();
 

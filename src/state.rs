@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     database::models::{
         log::Log,
-        message::{ContentBlock, Message},
+        message::{ContentBlock, Message, Role},
     },
     events::LLMMessageDeltaEventPayload,
     widgets::views::{home::HomeViewState, logs::LogsViewState},
@@ -51,6 +53,7 @@ pub struct AppState {
 
     pub audio_input_device: String,
     pub audio_output_device: String,
+    pub tool_input_buffers: HashMap<(String, usize), String>,
 
     pub view: View,
     pub home_view: HomeViewState,
@@ -58,16 +61,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn on_llm_text_delta(&mut self, delta: &LLMMessageDeltaEventPayload) {
-        if let Some(message) = self.get_message_mut(&delta.message_id) {
-            if let Some(block) = message.content.get_mut(delta.content_block_index) {
-                if let ContentBlock::Text { text } = block {
-                    text.push_str(delta.text.as_str());
-                }
-            }
-        }
-    }
-
     pub fn get_message(&self, id: &str) -> Option<&Message> {
         for message in self.messages.iter() {
             if message.id == id {
@@ -86,6 +79,13 @@ impl AppState {
         }
 
         None
+    }
+
+    pub fn get_assistant_message_count(&self) -> usize {
+        self.messages
+            .iter()
+            .filter(|message| message.role == Role::Assistant)
+            .count()
     }
 
     pub fn log(&mut self, log: Log) {

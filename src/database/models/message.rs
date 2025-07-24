@@ -1,4 +1,3 @@
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::database::models::Model;
@@ -19,7 +18,7 @@ pub enum ContentBlock {
     ToolUse {
         id: String,
         name: String,
-        input: serde_json::Value,
+        input: serde_json::Value
     },
     ToolResult {
         tool_use_id: String,

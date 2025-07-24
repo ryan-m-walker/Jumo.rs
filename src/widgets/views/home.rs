@@ -71,6 +71,12 @@ impl Widget for HomeViewWidget<'_> {
                             lines.push(Line::from(line));
                         }
                     }
+                    ContentBlock::ToolUse { name, input, .. } => {
+                        let input = serde_json::to_string(input).unwrap();
+                        lines.push(Line::from(""));
+                        lines.push(Line::from(format!("[Tool Call] {name}:")));
+                        lines.push(Line::from(format!("{input}")));
+                    }
                     _ => {}
                 }
             }

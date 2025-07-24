@@ -149,13 +149,10 @@ impl App {
                     created_at: Some(chrono::Utc::now().to_rfc3339()),
                 };
 
-                let result = self
-                    .anthropic
-                    .send_message(&text, &self.state.messages)
-                    .await;
-
                 self.db.insert_message(&message)?;
                 self.state.messages.push(message);
+
+                let result = self.anthropic.prompt(&self.state.messages).await;
 
                 self.state
                     .log(Log::new("Transcription complete", LogLevel::Info));
@@ -193,12 +190,25 @@ impl App {
 
                 self.state.messages.push(message);
                 self.elevenlabs.start_stream().await?;
+
+                let assistant_message_count = self
+                    .state
+                    .messages
+                    .iter()
+                    .filter(|message| message.role == Role::Assistant)
+                    .count();
+                self.state.home_view.message_index = assistant_message_count - 1;
             }
             AppEvent::LLMStreamEvent(payload) => match payload.event {
                 AnthropicMessageStreamEvent::ContentBlockStart {
                     index,
                     content_block,
                 } => {
+                    if let ContentBlock::ToolUse { id, input, .. } = &content_block {
+                        let key = (payload.message_id.clone(), index);
+                        self.state.tool_input_buffers.insert(key, String::new());
+                    }
+
                     if let Some(message) = self.state.get_message_mut(&payload.message_id) {
                         message.content.insert(index, content_block);
                     }
@@ -224,11 +234,11 @@ impl App {
                                     }
                                 }
                                 AnthropicContentBlockDelta::InputJson { partial_json } => {
-                                    if let ContentBlock::ToolUse {
-                                        input: block_input, ..
-                                    } = block
-                                    {
-                                        block_input.push_str(&partial_json);
+                                    let key = (payload.message_id.clone(), index);
+                                    let input_buffer = self.state.tool_input_buffers.get_mut(&key);
+
+                                    if let Some(input_buffer) = input_buffer {
+                                        input_buffer.push_str(&partial_json);
                                     }
                                 }
                                 _ => {}
@@ -236,6 +246,28 @@ impl App {
                         }
                     }
                 }
+
+                AnthropicMessageStreamEvent::ContentBlockStop { index } => {
+                    let key = (payload.message_id.clone(), index);
+
+                    if let Some(buffer) = self.state.tool_input_buffers.remove(&key) {
+                        if let Some(message) = self.state.get_message_mut(&payload.message_id) {
+                            if let Some(ContentBlock::ToolUse { input, .. }) =
+                                message.content.get_mut(index)
+                            {
+                                match serde_json::from_str::<serde_json::Value>(&buffer) {
+                                    Ok(json_value) => {
+                                        *input = json_value;
+                                    }
+                                    Err(_) => {
+                                        *input = serde_json::Value::String(buffer);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 _ => {}
             },
             AppEvent::LLMGenerationCompleted(payload) => {
@@ -246,20 +278,47 @@ impl App {
 
                 self.text_processor.flush().await?;
 
+                let mut tool_result_blocks = Vec::new();
+
                 if let Some(message) = self.state.get_message(&payload.message_id) {
                     for block in &message.content {
                         match block {
                             ContentBlock::ToolUse { id, name, input } => {
-                                let result =
-                                    ToolType::execute_tool(&name, &input, self.event_bus.sender())
-                                        .await?;
-                                panic!("{result}");
+                                let string_input = input.to_string();
+
+                                let result = ToolType::execute_tool(
+                                    &name,
+                                    &string_input,
+                                    self.event_bus.sender(),
+                                )
+                                .await?;
+
+                                let block = ContentBlock::ToolResult {
+                                    tool_use_id: id.clone(),
+                                    content: result,
+                                };
+
+                                tool_result_blocks.push(block);
                             }
                             _ => {}
                         }
                     }
 
                     self.db.insert_message(message)?;
+                }
+
+                if !tool_result_blocks.is_empty() {
+                    let message = Message {
+                        id: Uuid::new_v4().to_string(),
+                        role: Role::User,
+                        content: tool_result_blocks,
+                        created_at: Some(chrono::Utc::now().to_rfc3339()),
+                    };
+
+                    self.db.insert_message(&message)?;
+                    self.state.messages.push(message);
+
+                    self.anthropic.prompt(&self.state.messages).await?;
                 }
             }
             AppEvent::LLMGenerationFailed(error) => {
@@ -377,7 +436,7 @@ impl App {
     }
 
     fn previous_message(&mut self) {
-        if self.state.home_view.message_index >= self.state.messages.len() - 1 {
+        if self.state.home_view.message_index >= self.state.get_assistant_message_count() - 1 {
             return;
         }
 
