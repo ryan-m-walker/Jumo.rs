@@ -3,7 +3,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::{
-    database::models::log::LogLevel,
+    database::models::{log::LogLevel, message::Message},
+    services::anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
     state::{AppState, View},
 };
 
@@ -22,6 +23,7 @@ pub struct LLMMessageStartedEventPayload {
 pub struct LLMMessageDeltaEventPayload {
     pub message_id: String,
     pub text: String,
+    pub content_block_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -42,10 +44,21 @@ pub struct LogEventPayload {
     pub message: String,
 }
 
-// #[derive(Debug, Clone)]
-// pub struct RequestAppStateEventPayload {
-//     pub sender: oneshot::Sender<AppState>,
-// }
+#[derive(Debug, Clone)]
+pub struct LLMGenerationStartedEventPayload {
+    pub message_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LLMStreamEventPayload {
+    pub message_id: String,
+    pub event: AnthropicMessageStreamEvent,
+}
+
+#[derive(Debug, Clone)]
+pub struct LLMGenerationCompletedEventPayload {
+    pub message_id: String,
+}
 
 #[derive(Debug)]
 pub enum AppEvent {
@@ -64,10 +77,11 @@ pub enum AppEvent {
     TranscriptionFailed(String),
 
     // LLM events
-    LLMMessageStarted(LLMMessageStartedEventPayload),
-    LLMMessageDelta(LLMMessageDeltaEventPayload),
-    LLMMessageCompleted(LLMMessageCompletedEventPayload),
-    LLMRequestFailed(String),
+    LLMGenerationStarted(LLMGenerationStartedEventPayload),
+    LLMGenerationCompleted(LLMGenerationCompletedEventPayload),
+    LLMStreamEvent(LLMStreamEventPayload),
+    LLMGenerationFailed(String),
+    LLMGenerationError(String),
 
     TextProcessorTextChunk(TextProcessorChunkEventPayload),
     TextProcessorFlushed,

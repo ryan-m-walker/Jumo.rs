@@ -1,0 +1,9 @@
+FROM rust:latest
+
+RUN apt-get update && apt-get install -y \
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu 
+
+RUN rustup target add aarch64-unknown-linux-gnu
+
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc

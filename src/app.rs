@@ -11,12 +11,14 @@ use crate::{
         Database,
         models::{
             log::{Log, LogLevel},
-            message::{Message, MessageContent, MessageType},
+            message::{ContentBlock, Message, Role},
         },
     },
     events::EventBus,
+    services::anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
     state::View,
     text_processor::TextProcessor,
+    tools::tools::ToolType,
     widgets::app_layout::AppLayout,
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
@@ -142,11 +144,9 @@ impl App {
 
                 let message = Message {
                     id: Uuid::new_v4().to_string(),
-                    message_type: MessageType::User,
-                    content: MessageContent::User {
-                        text: text.to_string(),
-                    },
-                    created_at: None,
+                    role: Role::User,
+                    content: vec![ContentBlock::Text { text: text.clone() }],
+                    created_at: Some(chrono::Utc::now().to_rfc3339()),
                 };
 
                 let result = self
@@ -178,7 +178,7 @@ impl App {
             }
 
             // llm events
-            AppEvent::LLMMessageStarted(payload) => {
+            AppEvent::LLMGenerationStarted(payload) => {
                 self.state.is_llm_message_running = true;
 
                 self.state
@@ -186,21 +186,59 @@ impl App {
 
                 let message = Message {
                     id: payload.message_id,
-                    message_type: MessageType::Assistant,
-                    content: MessageContent::Assistant {
-                        text: "".to_string(),
-                    },
-                    created_at: None,
+                    role: Role::Assistant,
+                    content: vec![],
+                    created_at: Some(chrono::Utc::now().to_rfc3339()),
                 };
 
                 self.state.messages.push(message);
                 self.elevenlabs.start_stream().await?;
             }
-            AppEvent::LLMMessageDelta(payload) => {
-                self.state.on_llm_text_delta(&payload);
-                self.text_processor.process_delta(&payload.text).await?;
-            }
-            AppEvent::LLMMessageCompleted(payload) => {
+            AppEvent::LLMStreamEvent(payload) => match payload.event {
+                AnthropicMessageStreamEvent::ContentBlockStart {
+                    index,
+                    content_block,
+                } => {
+                    if let Some(message) = self.state.get_message_mut(&payload.message_id) {
+                        message.content.insert(index, content_block);
+                    }
+                }
+
+                AnthropicMessageStreamEvent::ContentBlockDelta { index, delta } => {
+                    if let Some(message) = self.state.get_message_mut(&payload.message_id) {
+                        if let Some(block) = message.content.get_mut(index) {
+                            match delta {
+                                AnthropicContentBlockDelta::Text { text } => {
+                                    if let ContentBlock::Text { text: block_text } = block {
+                                        block_text.push_str(&text);
+                                    }
+
+                                    self.text_processor.process_delta(&text).await?;
+                                }
+                                AnthropicContentBlockDelta::Thinking { text } => {
+                                    if let ContentBlock::Thinking {
+                                        content: block_content,
+                                    } = block
+                                    {
+                                        block_content.push_str(&text);
+                                    }
+                                }
+                                AnthropicContentBlockDelta::InputJson { partial_json } => {
+                                    if let ContentBlock::ToolUse {
+                                        input: block_input, ..
+                                    } = block
+                                    {
+                                        block_input.push_str(&partial_json);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            },
+            AppEvent::LLMGenerationCompleted(payload) => {
                 self.state.is_llm_message_running = false;
 
                 self.state
@@ -209,16 +247,36 @@ impl App {
                 self.text_processor.flush().await?;
 
                 if let Some(message) = self.state.get_message(&payload.message_id) {
+                    for block in &message.content {
+                        match block {
+                            ContentBlock::ToolUse { id, name, input } => {
+                                let result =
+                                    ToolType::execute_tool(&name, &input, self.event_bus.sender())
+                                        .await?;
+                                panic!("{result}");
+                            }
+                            _ => {}
+                        }
+                    }
+
                     self.db.insert_message(message)?;
                 }
             }
-            AppEvent::LLMRequestFailed(error) => {
+            AppEvent::LLMGenerationFailed(error) => {
                 self.state.log(Log::new(
                     &format!("LLM request failed: {error}"),
                     LogLevel::Error,
                 ));
                 self.state.error = Some(error.to_string());
                 self.state.is_llm_message_running = false;
+            }
+
+            AppEvent::LLMGenerationError(error) => {
+                self.state.log(Log::new(
+                    &format!("LLM generation error: {error}"),
+                    LogLevel::Error,
+                ));
+                self.state.error = Some(error.to_string());
             }
 
             AppEvent::TextProcessorTextChunk(payload) => {
@@ -311,19 +369,19 @@ impl App {
     }
 
     fn next_message(&mut self) {
-        if self.state.home_view.message_index >= self.state.messages.len() - 1 {
-            return;
-        }
-
-        self.state.home_view.message_index += 1;
-    }
-
-    fn previous_message(&mut self) {
         if self.state.home_view.message_index == 0 {
             return;
         }
 
         self.state.home_view.message_index -= 1;
+    }
+
+    fn previous_message(&mut self) {
+        if self.state.home_view.message_index >= self.state.messages.len() - 1 {
+            return;
+        }
+
+        self.state.home_view.message_index += 1;
     }
 
     fn tab_view_backward(&mut self) {

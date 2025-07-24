@@ -1,35 +1,31 @@
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::database::models::Model;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum MessageType {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
     User,
     Assistant,
-    Error,
-    ToolCall,
-    ToolResult,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum MessageContent {
-    User {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "type")]
+pub enum ContentBlock {
+    Text {
         text: String,
     },
-    Assistant {
-        text: String,
-    },
-    Error {
-        text: String,
-    },
-    ToolCall {
+    ToolUse {
         id: String,
         name: String,
-        input: String,
+        input: serde_json::Value,
     },
     ToolResult {
         tool_use_id: String,
+        content: String,
+    },
+    Thinking {
         content: String,
     },
 }
@@ -37,8 +33,8 @@ pub enum MessageContent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
-    pub message_type: MessageType,
-    pub content: MessageContent,
+    pub role: Role,
+    pub content: Vec<ContentBlock>,
     pub created_at: Option<String>,
 }
 
@@ -47,7 +43,7 @@ impl Model for Message {
         connection.execute(
             "CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
-                message_type TEXT NOT NULL CHECK (message_type IN ('user', 'assistant', 'error', 'tool_call', 'tool_result')),
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
                 content TEXT NOT NULL,
                 created_at TEXT
             )",

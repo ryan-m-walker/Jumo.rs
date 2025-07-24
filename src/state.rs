@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     database::models::{
         log::Log,
-        message::{Message, MessageContent},
+        message::{ContentBlock, Message},
     },
     events::LLMMessageDeltaEventPayload,
     widgets::views::{home::HomeViewState, logs::LogsViewState},
@@ -59,9 +59,9 @@ pub struct AppState {
 
 impl AppState {
     pub fn on_llm_text_delta(&mut self, delta: &LLMMessageDeltaEventPayload) {
-        for message in self.messages.iter_mut() {
-            if let MessageContent::Assistant { text } = &mut message.content {
-                if message.id == delta.message_id {
+        if let Some(message) = self.get_message_mut(&delta.message_id) {
+            if let Some(block) = message.content.get_mut(delta.content_block_index) {
+                if let ContentBlock::Text { text } = block {
                     text.push_str(delta.text.as_str());
                 }
             }
@@ -70,6 +70,16 @@ impl AppState {
 
     pub fn get_message(&self, id: &str) -> Option<&Message> {
         for message in self.messages.iter() {
+            if message.id == id {
+                return Some(message);
+            }
+        }
+
+        None
+    }
+
+    pub fn get_message_mut(&mut self, id: &str) -> Option<&mut Message> {
+        for message in self.messages.iter_mut() {
             if message.id == id {
                 return Some(message);
             }

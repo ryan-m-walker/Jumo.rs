@@ -1,98 +1,57 @@
 use serde::{Deserialize, Serialize};
 
-use crate::tools::ToolInput;
+use crate::{
+    database::models::message::{ContentBlock, Role},
+    tools::ToolInput,
+};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Role {
-    #[serde(rename = "user")]
-    User,
-    #[serde(rename = "assistant")]
-    Assistant,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ClaudeMessageContentInput {
-    Text(String),
-    // TODO
-    Json(String),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClaudeMessage {
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct AnthropicMessage {
     pub role: Role,
-    pub content: String,
+    pub content: Vec<ContentBlock>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ClaudeInput {
+pub struct AnthropicInput {
     pub model: String,
     pub max_tokens: u32,
-    pub messages: Vec<ClaudeMessage>,
+    pub messages: Vec<AnthropicMessage>,
     pub stream: bool,
     pub system: Option<String>,
     pub tools: Vec<ToolInput>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-pub enum StreamEvent {
-    #[serde(rename = "message_start")]
-    MessageStart { message: Message },
-
-    #[serde(rename = "content_block_start")]
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "snake_case", tag = "type")]
+pub enum AnthropicMessageStreamEvent {
+    MessageStart {
+        message: AnthropicMessage,
+    },
     ContentBlockStart {
         index: usize,
         content_block: ContentBlock,
     },
-
-    #[serde(rename = "content_block_delta")]
-    ContentBlockDelta { index: usize, delta: Delta },
-
-    #[serde(rename = "content_block_stop")]
-    ContentBlockStop { index: usize },
-
-    #[serde(rename = "message_delta")]
-    MessageDelta { delta: MessageDelta },
-
-    #[serde(rename = "message_stop")]
-    MessageStop,
-
-    #[serde(rename = "ping")]
-    Ping,
-
-    #[serde(rename = "error")]
-    Error { error: ErrorInfo },
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Message {
-    pub id: String,
-    pub role: String,
-    pub content: Vec<ContentBlock>,
-    pub model: String,
-    pub stop_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-pub enum ContentBlock {
-    #[serde(rename = "text")]
-    Text { text: String },
-
-    #[serde(rename = "tool_use")]
-    ToolUse {
-        id: String,
-        name: String,
-        input: String,
+    ContentBlockDelta {
+        index: usize,
+        delta: AnthropicContentBlockDelta,
     },
-
-    #[serde(rename = "thinking")]
-    Thinking { content: String },
+    ContentBlockStop {
+        index: usize,
+    },
+    MessageDelta {
+        delta: AnthropicMessageDelta,
+    },
+    MessageStop,
+    Ping,
+    Error {
+        error: AnthropicErrorInfo,
+    },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type")]
-pub enum Delta {
+pub enum AnthropicContentBlockDelta {
     /// The deltas for normal text output.
     #[serde(rename = "text_delta")]
     Text { text: String },
@@ -110,20 +69,25 @@ pub enum Delta {
     Signature { signature: String },
 }
 
-#[derive(Debug, Deserialize)]
-pub struct MessageDelta {
+#[derive(Debug, Deserialize, Clone)]
+pub struct AnthropicMessageDelta {
     pub stop_reason: Option<String>,
-    pub usage: Option<Usage>,
+    pub usage: Option<AnthropicUsage>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Usage {
-    pub input_tokens: u32,
-    pub output_tokens: u32,
+/// Billing and rate-limit usage.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AnthropicUsage {
+    /// The number of input tokens which were used.
+    pub input_tokens: usize,
+
+    /// The number of output tokens which were used.
+    pub output_tokens: usize,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ErrorInfo {
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Serialize)]
+pub struct AnthropicErrorInfo {
+    #[serde(rename = "type")]
     pub error_type: String,
     pub message: String,
 }

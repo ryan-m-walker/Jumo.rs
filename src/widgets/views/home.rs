@@ -6,7 +6,10 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
-use crate::{database::models::message::MessageContent, state::AppState};
+use crate::{
+    database::models::message::{ContentBlock, Role},
+    state::AppState,
+};
 
 #[derive(Default, Debug, Clone)]
 pub struct HomeViewState {
@@ -39,28 +42,39 @@ impl Widget for HomeViewWidget<'_> {
             return;
         }
 
-        let mut assistant_message = None;
+        let selected_message_index = self.state.home_view.message_index;
 
-        for message in self.state.messages.iter().rev() {
-            if let MessageContent::Assistant { text } = &message.content {
-                assistant_message = Some(text.clone());
-                break;
-            }
-        }
+        let assistant_messages = self
+            .state
+            .messages
+            .iter()
+            .filter(|message| message.role == Role::Assistant)
+            .collect::<Vec<_>>();
 
-        let message_count = self.state.messages.len();
+        let selected_message = assistant_messages.get(selected_message_index);
+        let message_count = assistant_messages.len();
+
+        let nav_line = format!("[{}/{message_count}]", selected_message_index + 1);
 
         let mut all_lines = vec![
-            Line::from(format!("[1/{message_count}]"))
-                .style(Style::default().fg(Color::Reset).bold()),
+            Line::from(nav_line).style(Style::default().fg(Color::Reset).bold()),
             Line::from(""),
         ];
 
-        let assistant_message = assistant_message.unwrap_or_default();
-        let lines = assistant_message
-            .split('\n')
-            .map(Line::from)
-            .collect::<Vec<_>>();
+        let mut lines = vec![];
+
+        if let Some(selected_message) = selected_message {
+            for block in selected_message.content.iter() {
+                match block {
+                    ContentBlock::Text { text } => {
+                        for line in text.lines() {
+                            lines.push(Line::from(line));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         all_lines.extend(lines);
 

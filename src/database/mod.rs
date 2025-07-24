@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use crate::database::models::{
     Model,
     log::Log,
-    message::{Message, MessageContent, MessageType},
+    message::{Message, Role},
 };
 
 pub mod models;
@@ -25,32 +25,29 @@ impl Database {
     }
 
     pub fn get_messages(&self) -> Result<Vec<Message>, anyhow::Error> {
-        let mut stmt = self
-            .connection
-            .prepare("SELECT * FROM messages ORDER BY created_at DESC LIMIT 50")?;
+        let mut stmt = self.connection.prepare(
+            "SELECT id, role, content, created_at FROM messages ORDER BY created_at DESC LIMIT 50",
+        )?;
 
         let messages_iter = stmt.query_map([], |row| {
             let id: String = row.get(0)?;
-            let message_type_str: String = row.get(1)?;
+            let role_str: String = row.get(1)?;
             let content_str: String = row.get(2)?;
             let created_at: Option<String> = row.get(3)?;
 
-            let message_type = match message_type_str.as_str() {
-                "user" => MessageType::User,
-                "assistant" => MessageType::Assistant,
-                "error" => MessageType::Error,
-                "tool_call" => MessageType::ToolCall,
-                "tool_result" => MessageType::ToolResult,
+            let role = match role_str.as_str() {
+                "user" => Role::User,
+                "assistant" => Role::Assistant,
                 _ => {
                     return Err(rusqlite::Error::InvalidColumnType(
                         1,
-                        "message_type".to_string(),
+                        "role".to_string(),
                         rusqlite::types::Type::Text,
                     ));
                 }
             };
 
-            let content: MessageContent = serde_json::from_str(&content_str).map_err(|_| {
+            let content = serde_json::from_str(&content_str).map_err(|_| {
                 rusqlite::Error::InvalidColumnType(
                     2,
                     "content".to_string(),
@@ -60,7 +57,7 @@ impl Database {
 
             Ok(Message {
                 id,
-                message_type,
+                role,
                 content,
                 created_at,
             })
@@ -78,24 +75,16 @@ impl Database {
     }
 
     pub fn insert_message(&self, message: &Message) -> Result<(), anyhow::Error> {
-        let message_type_str = match message.message_type {
-            MessageType::User => "user",
-            MessageType::Assistant => "assistant",
-            MessageType::Error => "error",
-            MessageType::ToolCall => "tool_call",
-            MessageType::ToolResult => "tool_result",
+        let role_str = match message.role {
+            Role::User => "user",
+            Role::Assistant => "assistant",
         };
 
         let content_json = serde_json::to_string(&message.content)?;
 
         self.connection.execute(
-            "INSERT INTO messages (id, message_type, content, created_at) VALUES (?1, ?2, ?3, ?4)",
-            (
-                &message.id,
-                message_type_str,
-                content_json,
-                &message.created_at,
-            ),
+            "INSERT INTO messages (id, role, content, created_at) VALUES (?1, ?2, ?3, ?4)",
+            (&message.id, role_str, content_json, &message.created_at),
         )?;
 
         Ok(())

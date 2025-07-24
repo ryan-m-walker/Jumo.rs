@@ -7,9 +7,9 @@ use ratatui::{
 };
 
 use crate::{
-    database::models::message::MessageContent,
+    database::models::message::{ContentBlock, Role},
     state::AppState,
-    widgets::{header::Header, nav_tabs::NavTabs, status_line::StatusLine},
+    widgets::{nav_tabs::NavTabs, status_line::StatusLine},
 };
 
 pub struct MainWidget<'a> {
@@ -40,28 +40,24 @@ impl Widget for MainWidget<'_> {
             .border_style(Style::new().yellow())
             .border_type(BorderType::Rounded);
 
-        let mut lines = vec![];
         let messages = &self.state.messages;
         let messages_len = messages.len();
 
-        for message in &messages[messages_len.saturating_sub(2)..] {
-            match &message.content {
-                MessageContent::User { text } => {
-                    lines.push(Line::from(text.clone()));
-                    lines.push(Line::from(""));
-                }
-                MessageContent::Assistant { text } => {
-                    lines.push(Line::from(text.clone()).style(Style::new().yellow()));
-                }
-                MessageContent::Error { text } => {
-                    lines.push(Line::from("[Error]:").style(Style::new().red()));
-                    lines.push(Line::from(text.clone()));
-                }
-                MessageContent::ToolCall { .. } => {
-                    lines.push(Line::from("[ToolCall]:").style(Style::new().magenta()));
-                }
-                MessageContent::ToolResult { .. } => {
-                    lines.push(Line::from("[ToolResult]:").style(Style::new().magenta()));
+        let most_recent_assistant_message = messages
+            .iter()
+            .rev()
+            .find(|message| message.role == Role::Assistant);
+
+        let mut lines = vec![];
+
+        if let Some(most_recent_assistant_message) = most_recent_assistant_message {
+            for block in most_recent_assistant_message.content.iter() {
+                match block {
+                    ContentBlock::Text { text } => {
+                        lines.push(Line::from(text.clone()));
+                        lines.push(Line::from(""));
+                    }
+                    _ => {}
                 }
             }
         }
