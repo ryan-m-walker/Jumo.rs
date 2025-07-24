@@ -4,7 +4,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     events::AppEvent,
-    state::View,
+    state::{AppState, View},
     tools::{Tool, ToolInput},
 };
 
@@ -34,19 +34,10 @@ impl Tool for SetViewTool {
     async fn execute(
         &self,
         input: &str,
+        _app_state: &AppState,
         event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
         let parsed_input: SetViewToolInputSchema = serde_json::from_str(&input)?;
-
-        // let (tx, rx) = oneshot::channel();
-
-        // event_sender
-        //     .send(AppEvent::RequestAppState(RequestAppStateEventPayload {
-        //         sender: tx,
-        //     }))
-        //     .await?;
-        //
-        // let state = rx.await?;
 
         let output = SetViewToolOutput {
             new_view: parsed_input.view.clone(),

@@ -26,7 +26,7 @@ impl Database {
 
     pub fn get_messages(&self) -> Result<Vec<Message>, anyhow::Error> {
         let mut stmt = self.connection.prepare(
-            "SELECT id, role, content, created_at FROM messages ORDER BY created_at DESC LIMIT 50",
+            "SELECT id, role, content, created_at FROM messages ORDER BY created_at ASC LIMIT 50",
         )?;
 
         let messages_iter = stmt.query_map([], |row| {
@@ -66,8 +66,9 @@ impl Database {
         let mut messages: Vec<Message> = Vec::new();
 
         for message in messages_iter {
-            if let Ok(message) = message {
-                messages.push(message);
+            match message {
+                Ok(message) => messages.push(message),
+                Err(err) => panic!("Failed to get message: {err}"),
             }
         }
 

@@ -2,7 +2,7 @@ use schemars::Schema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use crate::events::AppEvent;
+use crate::{events::AppEvent, state::AppState};
 
 pub mod pass;
 pub mod set_view;
@@ -22,6 +22,7 @@ pub trait Tool {
     async fn execute(
         &self,
         input: &str,
+        state: &AppState,
         event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error>;
 }

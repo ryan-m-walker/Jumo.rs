@@ -32,12 +32,13 @@ impl ToolType {
     pub async fn execute_tool(
         tool_name: &str,
         input: &str,
+        state: &AppState,
         event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
         match tool_name {
-            PassTool::NAME => PassTool.execute(input, event_sender).await,
-            UpdateTool::NAME => UpdateTool.execute(input, event_sender).await,
-            SetViewTool::NAME => SetViewTool.execute(input, event_sender).await,
+            PassTool::NAME => PassTool.execute(input, state, event_sender).await,
+            UpdateTool::NAME => UpdateTool.execute(input, state, event_sender).await,
+            SetViewTool::NAME => SetViewTool.execute(input, state, event_sender).await,
             _ => Err(anyhow::anyhow!("Tool not found")),
         }
     }

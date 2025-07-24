@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     events::AppEvent,
+    state::AppState,
     tools::{Tool, ToolInput},
 };
 
@@ -11,12 +12,6 @@ use crate::{
 pub struct PassToolInputSchema {
     /// Optional reason for passing if you want to explain why you decided to pass.
     pub reason: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PassToolOutput {
-    /// Successful response.
-    pub passed: bool,
 }
 
 pub struct PassTool;
@@ -35,9 +30,9 @@ impl Tool for PassTool {
     async fn execute(
         &self,
         _input: &str,
+        _app_state: &AppState,
         _event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
-        let output = PassToolOutput { passed: true };
-        Ok(serde_json::to_string(&output)?)
+        Ok(String::new())
     }
 }

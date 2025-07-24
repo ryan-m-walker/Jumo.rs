@@ -52,13 +52,6 @@ impl AnthropicService {
             });
         }
 
-        // self.event_sender
-        //     .send(AppEvent::Log(LogEventPayload {
-        //         level: LogLevel::Info,
-        //         message: format!("Sending message to anthropic: {message}"),
-        //     }))
-        //     .await?;
-
         let system = SystemPrompt::get();
 
         let body = AnthropicInput {

@@ -34,6 +34,7 @@ impl Tool for UpdateTool {
     async fn execute(
         &self,
         input: &str,
+        _app_state: &AppState,
         _event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
         let _parsed_input: PassToolInputSchema = serde_json::from_str(&input)?;

@@ -282,25 +282,23 @@ impl App {
 
                 if let Some(message) = self.state.get_message(&payload.message_id) {
                     for block in &message.content {
-                        match block {
-                            ContentBlock::ToolUse { id, name, input } => {
-                                let string_input = input.to_string();
+                        if let ContentBlock::ToolUse { id, name, input } = block {
+                            let string_input = input.to_string();
 
-                                let result = ToolType::execute_tool(
-                                    &name,
-                                    &string_input,
-                                    self.event_bus.sender(),
-                                )
-                                .await?;
+                            let result = ToolType::execute_tool(
+                                &name,
+                                &string_input,
+                                &self.state,
+                                self.event_bus.sender(),
+                            )
+                            .await?;
 
-                                let block = ContentBlock::ToolResult {
-                                    tool_use_id: id.clone(),
-                                    content: result,
-                                };
+                            let block = ContentBlock::ToolResult {
+                                tool_use_id: id.clone(),
+                                content: result,
+                            };
 
-                                tool_result_blocks.push(block);
-                            }
-                            _ => {}
+                            tool_result_blocks.push(block);
                         }
                     }
 
