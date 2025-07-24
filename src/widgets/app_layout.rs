@@ -8,9 +8,9 @@ use crate::{
     state::{AppState, View},
     widgets::{
         header::Header,
-        layouts::{home::HomeLayoutWidget, logs::LogsLayoutWidget},
         nav_tabs::NavTabs,
         status_line::StatusLine,
+        views::{home::HomeViewWidget, logs::LogsViewWidget},
     },
 };
 
@@ -40,8 +40,8 @@ impl Widget for AppLayout<'_> {
         NavTabs::new(self.state).render(layout[1], buf);
 
         match self.state.view {
-            View::Home => HomeLayoutWidget::new(self.state).render(layout[2], buf),
-            View::Logs => LogsLayoutWidget::new(self.state).render(layout[2], buf),
+            View::Home => HomeViewWidget::new(self.state).render(layout[2], buf),
+            View::Logs => LogsViewWidget::new(self.state).render(layout[2], buf),
         }
 
         StatusLine::new(self.state).render(layout[3], buf);

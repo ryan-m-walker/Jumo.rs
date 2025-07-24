@@ -1,9 +1,13 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::{
     database::models::{
         log::Log,
         message::{Message, MessageContent},
     },
     events::LLMMessageDeltaEventPayload,
+    widgets::views::{home::HomeViewState, logs::LogsViewState},
 };
 
 #[derive(Debug, Clone)]
@@ -24,13 +28,17 @@ pub struct TranscriptError {
     pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub enum View {
+    #[default]
+    /// Main home view that shows basic input and status information.
     Home,
+
+    /// View for displaying application logs.
     Logs,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct AppState {
     pub messages: Vec<Message>,
     pub error: Option<String>,
@@ -40,8 +48,13 @@ pub struct AppState {
     pub is_tts_running: bool,
     pub is_audio_recording_running: bool,
     pub is_audio_playback_running: bool,
+
+    pub audio_input_device: String,
+    pub audio_output_device: String,
+
     pub view: View,
-    pub logs: Vec<Log>,
+    pub home_view: HomeViewState,
+    pub logs_view: LogsViewState,
 }
 
 impl AppState {
@@ -66,23 +79,6 @@ impl AppState {
     }
 
     pub fn log(&mut self, log: Log) {
-        self.logs.push(log);
-    }
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            messages: Vec::new(),
-            error: None,
-            is_app_running: true,
-            is_audio_transcription_running: false,
-            is_llm_message_running: false,
-            is_tts_running: false,
-            is_audio_recording_running: false,
-            is_audio_playback_running: false,
-            logs: Vec::new(),
-            view: View::Home,
-        }
+        self.logs_view.logs.push(log);
     }
 }

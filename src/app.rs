@@ -66,7 +66,7 @@ impl App {
         self.state.is_app_running = true;
 
         self.db.init()?;
-        self.audio_player.start()?;
+        self.audio_player.start().await?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
@@ -80,7 +80,7 @@ impl App {
         while self.state.is_app_running {
             tokio::select! {
                 _ = interval.tick() => self.render()?,
-                Some(event) = self.event_bus.recv() => self.handle_app_event(&event).await?,
+                Some(event) = self.event_bus.recv() => self.handle_app_event(event).await?,
                 Some(Ok(event)) = events.next() => self.handle_terminal_event(&event).await?,
             }
         }
@@ -88,7 +88,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_app_event(&mut self, event: &AppEvent) -> Result<(), anyhow::Error> {
+    async fn handle_app_event(&mut self, event: AppEvent) -> Result<(), anyhow::Error> {
         match event {
             // audio events
             AppEvent::AudioRecordingStarted => {
@@ -101,22 +101,34 @@ impl App {
                     .log(Log::new("Audio recording completed", LogLevel::Info));
                 self.state.is_audio_recording_running = false;
 
-                if let Err(error) = self.elevenlabs.transcribe(temp_path).await {
-                    self.state
-                        .log(Log::new("Audio recording failed", LogLevel::Error));
+                if let Err(error) = self.elevenlabs.transcribe(&temp_path).await {
+                    self.state.log(Log::new(
+                        &format!("Audio recording failed: {error}"),
+                        LogLevel::Error,
+                    ));
                     self.state.error = Some(error.to_string());
                 }
             }
             AppEvent::AudioRecordingFailed(error) => {
-                self.state
-                    .log(Log::new("Audio recording failed", LogLevel::Error));
+                self.state.log(Log::new(
+                    &format!("Audio recording failed: {error}"),
+                    LogLevel::Error,
+                ));
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_recording_running = false;
             }
             AppEvent::AudioPlaybackError(error) => {
-                self.state
-                    .log(Log::new("Audio playback error", LogLevel::Error));
+                self.state.log(Log::new(
+                    &format!("Audio playback error: {error}"),
+                    LogLevel::Error,
+                ));
                 self.state.error = Some(error.to_string());
+            }
+            AppEvent::AudioSetInputDevice(device_name) => {
+                self.state.audio_input_device = device_name;
+            }
+            AppEvent::AudioSetOutputDevice(device_name) => {
+                self.state.audio_output_device = device_name;
             }
 
             // transcription events
@@ -139,7 +151,7 @@ impl App {
 
                 let result = self
                     .anthropic
-                    .send_message(text, &self.state.messages)
+                    .send_message(&text, &self.state.messages)
                     .await;
 
                 self.db.insert_message(&message)?;
@@ -150,15 +162,19 @@ impl App {
 
                 if let Err(error) = result {
                     self.state.error = Some(error.to_string());
-                    self.state
-                        .log(Log::new("Transcription failed", LogLevel::Error));
+                    self.state.log(Log::new(
+                        &format!("Transcription failed: {error}"),
+                        LogLevel::Error,
+                    ));
                 }
             }
             AppEvent::TranscriptionFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_transcription_running = false;
-                self.state
-                    .log(Log::new("Transcription failed", LogLevel::Error));
+                self.state.log(Log::new(
+                    &format!("Transcription failed: {error}"),
+                    LogLevel::Error,
+                ));
             }
 
             // llm events
@@ -169,7 +185,7 @@ impl App {
                     .log(Log::new("LLM message started", LogLevel::Info));
 
                 let message = Message {
-                    id: payload.message_id.clone(),
+                    id: payload.message_id,
                     message_type: MessageType::Assistant,
                     content: MessageContent::Assistant {
                         text: "".to_string(),
@@ -181,7 +197,7 @@ impl App {
                 self.elevenlabs.start_stream().await?;
             }
             AppEvent::LLMMessageDelta(payload) => {
-                self.state.on_llm_text_delta(payload);
+                self.state.on_llm_text_delta(&payload);
                 self.text_processor.process_delta(&payload.text).await?;
             }
             AppEvent::LLMMessageCompleted(payload) => {
@@ -197,8 +213,10 @@ impl App {
                 }
             }
             AppEvent::LLMRequestFailed(error) => {
-                self.state
-                    .log(Log::new("LLM request failed", LogLevel::Error));
+                self.state.log(Log::new(
+                    &format!("LLM request failed: {error}"),
+                    LogLevel::Error,
+                ));
                 self.state.error = Some(error.to_string());
                 self.state.is_llm_message_running = false;
             }
@@ -216,19 +234,23 @@ impl App {
 
             // tts events
             AppEvent::TTSChunk(audio_bytes) => {
-                if let Err(e) = self.audio_player.push_audio_chunk(audio_bytes) {
-                    self.state
-                        .log(Log::new("TTS chunk failed", LogLevel::Error));
-                    self.state.error = Some(e.to_string());
+                if let Err(error) = self.audio_player.push_audio_chunk(&audio_bytes) {
+                    self.state.log(Log::new(
+                        &format!("TTS chunk failed: {error}"),
+                        LogLevel::Error,
+                    ));
+                    self.state.error = Some(error.to_string());
                 }
             }
             AppEvent::TTSError(error) => {
-                self.state.log(Log::new("TTS error", LogLevel::Error));
+                self.state
+                    .log(Log::new(&format!("TTS error: {error}"), LogLevel::Error));
                 self.state.error = Some(error.to_string());
                 self.state.is_tts_running = false;
             }
             AppEvent::TTSFailed(error) => {
-                self.state.log(Log::new("TTS failed", LogLevel::Error));
+                self.state
+                    .log(Log::new(&format!("TTS failed: {error}"), LogLevel::Error));
                 self.state.error = Some(error.to_string());
                 self.state.is_tts_running = false;
             }
@@ -237,12 +259,16 @@ impl App {
             AppEvent::Log(payload) => {
                 let log = Log {
                     id: Uuid::new_v4().to_string(),
-                    text: payload.message.clone(),
+                    text: payload.message,
                     level: payload.level,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 };
 
                 self.state.log(log);
+            }
+
+            AppEvent::SetView(view) => {
+                self.state.view = view.to_owned();
             }
         }
 
@@ -265,6 +291,9 @@ impl App {
                     KeyCode::Char('2') => self.state.view = View::Logs,
                     KeyCode::Tab => self.tab_view_forward(),
                     KeyCode::BackTab => self.tab_view_backward(),
+
+                    KeyCode::Right => self.next_message(),
+                    KeyCode::Left => self.previous_message(),
                     _ => {}
                 }
             }
@@ -279,6 +308,22 @@ impl App {
             View::Home => self.state.view = View::Logs,
             View::Logs => self.state.view = View::Home,
         }
+    }
+
+    fn next_message(&mut self) {
+        if self.state.home_view.message_index >= self.state.messages.len() - 1 {
+            return;
+        }
+
+        self.state.home_view.message_index += 1;
+    }
+
+    fn previous_message(&mut self) {
+        if self.state.home_view.message_index == 0 {
+            return;
+        }
+
+        self.state.home_view.message_index -= 1;
     }
 
     fn tab_view_backward(&mut self) {

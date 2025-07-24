@@ -50,6 +50,12 @@ impl AudioRecorder {
             return Err(anyhow::anyhow!("No default input device found"));
         };
 
+        let device_name = device.name().unwrap_or(String::from("<unknown>"));
+
+        self.event_sender
+            .send(AppEvent::AudioSetInputDevice(device_name))
+            .await?;
+
         let config = device.default_input_config()?;
 
         self.sample_rate = config.sample_rate().0;

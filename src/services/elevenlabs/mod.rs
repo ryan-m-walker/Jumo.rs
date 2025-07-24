@@ -35,10 +35,6 @@ pub struct ElevenLabsService {
 
 impl ElevenLabsService {
     pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
-        let Ok(api_key) = std::env::var("ELEVENLABS_API_KEY") else {
-            panic!("ELEVENLABS_API_KEY is not set");
-        };
-
         Self {
             event_sender,
             ws_sink: None,

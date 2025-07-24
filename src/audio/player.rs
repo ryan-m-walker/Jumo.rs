@@ -31,12 +31,18 @@ impl AudioPlayer {
         }
     }
 
-    pub fn start(&mut self) -> Result<(), anyhow::Error> {
+    pub async fn start(&mut self) -> Result<(), anyhow::Error> {
         let host = cpal::default_host();
 
         let Some(device) = host.default_output_device() else {
             return Err(anyhow::anyhow!("No audio device found"));
         };
+
+        let device_name = device.name().unwrap_or(String::from("<unknown>"));
+
+        self.event_sender
+            .send(AppEvent::AudioSetOutputDevice(device_name))
+            .await?;
 
         let config = StreamConfig {
             channels: 1,

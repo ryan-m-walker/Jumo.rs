@@ -3,22 +3,27 @@ use ratatui::{
     layout::Rect,
     style::{Color, Style, Stylize},
     text::Line,
-    widgets::{Block, BorderType, Padding, Paragraph, Widget, Wrap},
+    widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
 use crate::{database::models::message::MessageContent, state::AppState};
 
-pub struct HomeLayoutWidget<'a> {
+#[derive(Default, Debug, Clone)]
+pub struct HomeViewState {
+    pub message_index: usize,
+}
+
+pub struct HomeViewWidget<'a> {
     state: &'a AppState,
 }
 
-impl<'a> HomeLayoutWidget<'a> {
+impl<'a> HomeViewWidget<'a> {
     pub fn new(state: &'a AppState) -> Self {
         Self { state }
     }
 }
 
-impl Widget for HomeLayoutWidget<'_> {
+impl Widget for HomeViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
@@ -27,12 +32,14 @@ impl Widget for HomeLayoutWidget<'_> {
         if let Some(err) = &self.state.error {
             let error_message = format!("Error: {err}");
             Paragraph::new(error_message.lines().map(Line::from).collect::<Vec<_>>())
-                .style(Style::default().fg(Color::Red).bg(Color::Black).bold())
+                .style(Style::default().fg(Color::Red).bold())
+                .wrap(Wrap { trim: true })
+                .block(block)
                 .render(area, buf);
             return;
         }
 
-        let mut assistant_message: Option<String> = None;
+        let mut assistant_message = None;
 
         for message in self.state.messages.iter().rev() {
             if let MessageContent::Assistant { text } = &message.content {
@@ -41,13 +48,24 @@ impl Widget for HomeLayoutWidget<'_> {
             }
         }
 
+        let message_count = self.state.messages.len();
+
+        let mut all_lines = vec![
+            Line::from(format!("[1/{message_count}]"))
+                .style(Style::default().fg(Color::Reset).bold()),
+            Line::from(""),
+        ];
+
         let assistant_message = assistant_message.unwrap_or_default();
         let lines = assistant_message
             .split('\n')
             .map(Line::from)
             .collect::<Vec<_>>();
 
-        Paragraph::new(lines)
+        all_lines.extend(lines);
+
+        Paragraph::new(all_lines)
+            .style(Style::default().fg(Color::Reset))
             .block(block)
             .wrap(Wrap { trim: true })
             .render(area, buf);

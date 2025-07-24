@@ -26,11 +26,11 @@ pub enum MessageContent {
     ToolCall {
         id: String,
         name: String,
-        input: Value,
+        input: String,
     },
     ToolResult {
         tool_use_id: String,
-        content: Value,
+        content: String,
     },
 }
 
@@ -52,7 +52,7 @@ impl Model for Message {
                 created_at TEXT
             )",
             (),
-        );
+        )?;
 
         Ok(())
     }

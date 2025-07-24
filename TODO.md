@@ -1,23 +1,63 @@
-// let (ws_tx, mut ws_rx) = mpsc::channel(100);
-// let elevenlabs_api_key_clone = elevenlabs_api_key.clone();
-//
-// tokio::spawn(async move {
-//     let mut request =
-//         "wss://api.elevenlabs.io/v1/text-to-speech/GfVVOQdZ5Fsz9QBNYFie/stream-input"
-//             .into_client_request()
-//             .unwrap();
-//     request
-//         .headers_mut()
-//         .insert("api-key", elevenlabs_api_key_clone.parse().unwrap());
-//
-//     let (ws_stream, _) = connect_async(request).await.unwrap();
-//     let (mut write, read) = ws_stream.split();
-//
-//     while let Some(ev) = ws_rx.recv().await {
-//         let body = ElevenLabsSendTextMessage { text: ev };
-//         let json_str = serde_json::to_string(&body)?;
-//         write.send(Message::Text(json_str.into())).await?;
-//     }
-//
-//     Ok::<(), anyhow::Error>(())
-// });
+# TODO
+
+## A/V
+
+[x] Audio recording
+[x] Audio transcription
+[x] Audio playback
+[ ] Audio input detection (no need for record button)
+[ ] Voice keywords (cancel, stop, exit, update, etc)
+
+## Tools
+
+[ ] update(production = false) - git pull && cargo build && ./bin
+[ ] set_view(view) - set the active TUI view in app
+[ ] shutdown() - quit app
+[ ] pass() - do nothing
+[ ] output_text(text) - print text to TUI output view
+[ ] read_file(path) - read file from own source code
+[ ] view_logs(from, to) - view logs from from to to
+
+[ ] MCP
+
+## Memory
+
+[ ] Summarizer
+[ ] Vector DB (Qdrant)
+  - (Rust client) https://github.com/qdrant/rust-client
+[ ] Knowledge Base
+[ ] Knowledge Graph
+  - (Rust Neo4j driver) https://github.com/neo4j-labs/neo4rs
+
+## Prompting
+
+[ ] System prompt
+[ ] Core values
+[ ] Shared notes file
+[ ] Prompt composer
+
+## Capabilities
+
+[ ] Image upload 
+  - (Claude vision) https://docs.anthropic.com/en/docs/build-with-claude/vision 
+  - (Webcam crate) https://crates.io/crates/nokhwa
+[ ] Thinking (https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)
+[ ] Emotes
+
+## Embedding
+
+[ ] Setup Raspberry Pi environment
+
+## TUI
+
+[ ] Audio playback bars/visualization
+  - https://crates.io/crates/dasp_sample
+[ ] Scrolling logs
+  - https://crates.io/crates/tui-scrollview
+
+## Diagnostics
+
+[ ] System info (CPU, RAM, etc)
+  - https://crates.io/crates/sysinfo
+[ ] AV info (input, output, etc)
+[ ] Data storage stats (DB size, etc)

@@ -1,8 +1,11 @@
 use tempfile::TempPath;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::database::models::log::LogLevel;
+use crate::{
+    database::models::log::LogLevel,
+    state::{AppState, View},
+};
 
 #[derive(Debug, Clone)]
 pub struct TTSResult {
@@ -39,14 +42,21 @@ pub struct LogEventPayload {
     pub message: String,
 }
 
+// #[derive(Debug, Clone)]
+// pub struct RequestAppStateEventPayload {
+//     pub sender: oneshot::Sender<AppState>,
+// }
+
 #[derive(Debug)]
 pub enum AppEvent {
     // Audio events
     AudioRecordingStarted,
     AudioRecordingCompleted(TempPath),
     AudioRecordingFailed(String),
-
     AudioPlaybackError(String),
+
+    AudioSetInputDevice(String),
+    AudioSetOutputDevice(String),
 
     // Transcription events
     TranscriptionStarted,
@@ -68,6 +78,8 @@ pub enum AppEvent {
     TTSFailed(String),
 
     Log(LogEventPayload),
+
+    SetView(View),
 }
 
 pub struct EventBus {

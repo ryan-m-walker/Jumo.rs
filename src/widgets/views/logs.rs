@@ -5,20 +5,30 @@ use ratatui::{
     text::Line,
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
+use tui_scrollview::{ScrollView, ScrollViewState};
 
-use crate::{database::models::log::LogLevel, state::AppState};
+use crate::{
+    database::models::log::{Log, LogLevel},
+    state::AppState,
+};
 
-pub struct LogsLayoutWidget<'a> {
+#[derive(Default, Debug, Clone)]
+pub struct LogsViewState {
+    pub logs: Vec<Log>,
+    pub scroll_view_state: ScrollViewState,
+}
+
+pub struct LogsViewWidget<'a> {
     state: &'a AppState,
 }
 
-impl<'a> LogsLayoutWidget<'a> {
+impl<'a> LogsViewWidget<'a> {
     pub fn new(state: &'a AppState) -> Self {
         Self { state }
     }
 }
 
-impl Widget for LogsLayoutWidget<'_> {
+impl Widget for LogsViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
@@ -26,6 +36,7 @@ impl Widget for LogsLayoutWidget<'_> {
 
         let log_lines = self
             .state
+            .logs_view
             .logs
             .iter()
             .map(|log| {

@@ -1,27 +1,43 @@
-pub struct UpdateTool {
-    name: String,
-    description: String,
-    input_schema: String,
+use schemars::{JsonSchema, schema_for};
+use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+
+use crate::{
+    events::AppEvent,
+    state::AppState,
+    tools::{Tool, ToolInput},
+};
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct PassToolInputSchema {
+    pub production_build: bool,
 }
 
-impl UpdateTool {
-    pub fn new() -> Self {
-        Self {
-            name: "self_update".to_string(),
-            description: "Auto update yourself by pulling your source code from GitHub and rebuilding the rust binary and then restarting the app.".to_string(),
-            input_schema: r#"
-            {
-                "type": "object",
-                "properties": {
-                    "version": {
-                        "type": "string",
-                        "description": "The version of the app to update to"
-                    }
-                },
-                "required": ["version"]
-            }
-            "#
-            .to_string(),
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateToolOutput {
+    pub success: bool,
+}
+
+pub struct UpdateTool;
+
+impl Tool for UpdateTool {
+    const NAME: &'static str = "update";
+
+    fn get_tool_input(&self) -> ToolInput {
+        ToolInput {
+            name: Self::NAME,
+            description: "Auto update yourself by pulling your source code from GitHub and rebuilding the rust binary and then restarting the app.",
+            input_schema: schema_for!(PassToolInputSchema),
         }
+    }
+
+    async fn execute(
+        &self,
+        input: &str,
+        _event_sender: mpsc::Sender<AppEvent>,
+    ) -> Result<String, anyhow::Error> {
+        let _parsed_input: PassToolInputSchema = serde_json::from_str(&input)?;
+        let output = UpdateToolOutput { success: true };
+        Ok(serde_json::to_string(&output)?)
     }
 }

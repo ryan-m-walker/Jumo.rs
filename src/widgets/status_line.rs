@@ -28,20 +28,16 @@ impl<'a> StatusLine<'a> {
                 active: self.state.is_audio_recording_running,
             },
             Status {
-                code: String::from("TRN"),
+                code: String::from("STT"),
                 active: self.state.is_audio_transcription_running,
             },
             Status {
-                code: String::from("GEN"),
+                code: String::from("LLM"),
                 active: self.state.is_llm_message_running,
             },
             Status {
                 code: String::from("TTS"),
                 active: self.state.is_tts_running,
-            },
-            Status {
-                code: String::from("PLY"),
-                active: self.state.is_audio_playback_running,
             },
         ]
     }
@@ -52,7 +48,6 @@ impl Widget for StatusLine<'_> {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(5),
                 Constraint::Length(5),
                 Constraint::Length(5),
                 Constraint::Length(5),
@@ -82,5 +77,12 @@ impl Widget for StatusLine<'_> {
 
             code.render(chunks[i], buf);
         }
+
+        let devices = Paragraph::new(format!(
+            " [Mic]: {} | [Speaker]: {}",
+            self.state.audio_input_device, self.state.audio_output_device
+        ));
+
+        devices.render(chunks[4], buf);
     }
 }
