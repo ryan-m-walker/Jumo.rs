@@ -17,6 +17,7 @@
 [ ] output_text(text) - print text to TUI output view
 [ ] read_file(path) - read file from own source code
 [ ] view_logs(from, to) - view logs from from to to
+[ ] query_memory(query) - run SQL queries on episodic memory DB
 
 [ ] MCP
 
