@@ -94,8 +94,7 @@ impl Widget for HomeViewWidget<'_> {
 
         all_lines.extend(lines);
 
-        block.clone().render(face_layout[0], buf);
-        block.clone().render(face_layout[1], buf);
+        block.clone().render(layout[0], buf);
 
         Paragraph::new(all_lines)
             .style(Style::default().fg(Color::Reset))
