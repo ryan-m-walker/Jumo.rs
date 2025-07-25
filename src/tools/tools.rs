@@ -2,14 +2,18 @@ use tokio::sync::mpsc;
 
 use crate::{
     events::AppEvent,
-    state::AppState,
-    tools::{Tool, ToolInput, pass::PassTool, set_view::SetViewTool, update::UpdateTool},
+    state::{AppState, View},
+    tools::{
+        Tool, ToolInput, clear_logs::ClearLogsTool, pass::PassTool, set_view::SetViewTool,
+        update::UpdateTool,
+    },
 };
 
 pub enum ToolType {
     Pass(PassTool),
     Update(UpdateTool),
     SetView(SetViewTool),
+    ClearLogs(ClearLogsTool),
 }
 
 impl ToolType {
@@ -18,15 +22,22 @@ impl ToolType {
             ToolType::Pass(tool) => tool.get_tool_input(),
             ToolType::Update(tool) => tool.get_tool_input(),
             ToolType::SetView(tool) => tool.get_tool_input(),
+            ToolType::ClearLogs(tool) => tool.get_tool_input(),
         }
     }
 
-    pub fn all_tools() -> Vec<ToolInput> {
-        vec![
+    pub fn all_tools(state: &AppState) -> Vec<ToolInput> {
+        let mut tools = vec![
             Self::Pass(PassTool).to_tool_input(),
             Self::Update(UpdateTool).to_tool_input(),
             Self::SetView(SetViewTool).to_tool_input(),
-        ]
+        ];
+
+        if state.view == View::Logs {
+            tools.push(Self::ClearLogs(ClearLogsTool).to_tool_input());
+        }
+
+        tools
     }
 
     pub async fn execute_tool(

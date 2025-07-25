@@ -36,7 +36,7 @@ impl Widget for AppLayout<'_> {
             ])
             .split(area);
 
-        Header.render(layout[0], buf);
+        Header::new(self.state).render(layout[0], buf);
         NavTabs::new(self.state).render(layout[1], buf);
 
         match self.state.view {

@@ -60,7 +60,7 @@ impl Widget for StatusLine<'_> {
             let block = Block::default().padding(Padding::horizontal(1));
 
             let bg = if status.active {
-                Color::Yellow
+                self.state.color
             } else {
                 Color::Reset
             };

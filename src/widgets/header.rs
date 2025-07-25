@@ -5,16 +5,26 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, Widget},
 };
 
-pub struct Header;
+use crate::state::AppState;
 
-impl Widget for Header {
+pub struct Header<'a> {
+    state: &'a AppState,
+}
+
+impl<'a> Header<'a> {
+    pub fn new(state: &'a AppState) -> Self {
+        Self { state }
+    }
+}
+
+impl Widget for Header<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Fill(1), Constraint::Fill(1)].as_ref())
             .split(area);
 
-        let title = Paragraph::new("JUMO 0.1.0").yellow().bold();
+        let title = Paragraph::new("JUMO 0.1.0").fg(self.state.color).bold();
         title.render(chunks[0], buf);
 
         let block = Block::default().padding(Padding::horizontal(1));

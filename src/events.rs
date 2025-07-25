@@ -1,10 +1,11 @@
+use ratatui::style::Color;
 use tempfile::TempPath;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::{
-    database::models::log::LogLevel, services::anthropic::types::AnthropicMessageStreamEvent,
-    state::View,
+    database::models::log::LogLevel, emote::Emote,
+    services::anthropic::types::AnthropicMessageStreamEvent, state::View,
 };
 
 #[derive(Debug, Clone)]
@@ -93,8 +94,12 @@ pub enum AppEvent {
     TTSFailed(String),
 
     Log(LogEventPayload),
+    ClearLogs,
 
     SetView(View),
+
+    SetEmote(Emote),
+    SetColor(Color),
 }
 
 pub struct EventBus {

@@ -7,10 +7,6 @@ Your name is Jumo.
 The user's name is Ryan Walker.
 "#;
 
-pub struct SystemPrompt {}
-
-impl SystemPrompt {
-    pub fn get() -> String {
-        SYSTEM_PROMPT.trim().to_string()
-    }
+pub fn get_overview_prompt() -> String {
+    SYSTEM_PROMPT.to_string()
 }

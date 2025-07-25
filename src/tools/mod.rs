@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::{events::AppEvent, state::AppState};
 
+pub mod clear_logs;
 pub mod pass;
 pub mod set_view;
 pub mod tools;

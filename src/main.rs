@@ -1,8 +1,13 @@
+use std::panic;
+
+use colored::Colorize;
+
 use crate::app::App;
 
 mod app;
 mod audio;
 mod database;
+mod emote;
 mod events;
 mod prompts;
 mod services;
@@ -13,13 +18,23 @@ mod widgets;
 
 #[tokio::main]
 async fn main() {
+    let terminal = ratatui::init();
+
     dotenv::dotenv().ok();
 
-    let terminal = ratatui::init();
+    panic::set_hook(Box::new(|info| {
+        ratatui::restore();
+        eprintln!("{info}");
+    }));
 
     let mut app = App::new(terminal);
     if let Err(err) = app.start().await {
-        eprintln!("{err}");
+        ratatui::restore();
+
+        let err_message = format!("[Error]: {err}").red();
+        eprintln!("{err_message}");
+
+        return;
     }
 
     ratatui::restore();

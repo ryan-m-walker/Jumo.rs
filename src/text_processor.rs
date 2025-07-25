@@ -2,7 +2,10 @@ use std::mem::take;
 
 use tokio::sync::mpsc;
 
-use crate::events::{AppEvent, TextProcessorChunkEventPayload};
+use crate::{
+    emote::{get_color, get_emote},
+    events::{AppEvent, TextProcessorChunkEventPayload},
+};
 
 pub struct TextProcessor {
     event_sender: mpsc::Sender<AppEvent>,
@@ -23,6 +26,14 @@ impl TextProcessor {
 
         while let Some(c) = chars.next() {
             buffer.push(c);
+
+            if let Some(emote) = get_emote(c) {
+                self.event_sender.send(AppEvent::SetEmote(emote)).await?;
+            }
+
+            if let Some(color) = get_color(c) {
+                self.event_sender.send(AppEvent::SetColor(color)).await?;
+            }
 
             if matches!(c, '.' | '!' | '?' | ';' | '\n') {
                 if let Some(next_c) = chars.peek() {

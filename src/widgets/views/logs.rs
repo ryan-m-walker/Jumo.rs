@@ -30,7 +30,7 @@ impl Widget for LogsViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .style(Style::default().fg(Color::Yellow));
+            .style(Style::default().fg(self.state.color));
 
         let log_lines = self
             .state

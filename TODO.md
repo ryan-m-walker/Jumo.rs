@@ -10,6 +10,7 @@
 
 ## Tools
 
+[x] Basic tool calling
 [ ] update(production = false) - git pull && cargo build && ./bin
 [ ] set_view(view) - set the active TUI view in app
 [ ] shutdown() - quit app

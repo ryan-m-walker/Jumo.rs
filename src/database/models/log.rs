@@ -34,7 +34,7 @@ impl Model for Log {
     fn init_table(connection: &Connection) -> Result<(), anyhow::Error> {
         connection.execute(
             "CREATE TABLE IF NOT EXISTS logs (
-                id TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY NOT NULL,
                 text TEXT NOT NULL,
                 level TEXT NOT NULL CHECK (level IN ('info', 'warn', 'error')),
                 timestamp TEXT NOT NULL

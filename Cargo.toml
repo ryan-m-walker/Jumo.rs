@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.98"
 base64 = "0.22.1"
 chrono = "0.4.41"
+colored = "3.0.0"
 cpal = "0.16.0"
 crossbeam-channel = "0.5.15"
 crossterm = { version = "0.29.0", features = ["event-stream"] }

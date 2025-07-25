@@ -6,14 +6,15 @@ use uuid::Uuid;
 use crate::{
     database::models::{
         log::LogLevel,
-        message::{ContentBlock, Message, Role},
+        message::{ContentBlock, Message},
     },
     events::{
         AppEvent, LLMGenerationCompletedEventPayload, LLMGenerationStartedEventPayload,
         LLMStreamEventPayload, LogEventPayload,
     },
-    prompts::system::SystemPrompt,
+    prompts::get_system_prompt,
     services::anthropic::types::{AnthropicInput, AnthropicMessage, AnthropicMessageStreamEvent},
+    state::AppState,
     tools::tools::ToolType,
 };
 
@@ -28,7 +29,11 @@ impl AnthropicService {
         Self { event_sender }
     }
 
-    pub async fn prompt(&mut self, messages: &[Message]) -> Result<(), anyhow::Error> {
+    pub async fn prompt(
+        &mut self,
+        messages: &[Message],
+        state: &AppState,
+    ) -> Result<(), anyhow::Error> {
         let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
             panic!("ANTHROPIC_API_KEY is not set");
         };
@@ -48,11 +53,24 @@ impl AnthropicService {
         for message in messages {
             claude_messages.push(AnthropicMessage {
                 role: message.role,
-                content: message.content.clone(),
+                content: message
+                    .content
+                    .iter()
+                    .map(|content| match content {
+                        ContentBlock::Text { text } => {
+                            let text = if text.is_empty() { "<empty>" } else { text };
+
+                            ContentBlock::Text {
+                                text: text.to_string(),
+                            }
+                        }
+                        _ => content.clone(),
+                    })
+                    .collect(),
             });
         }
 
-        let system = SystemPrompt::get();
+        let system = get_system_prompt(state);
 
         let body = AnthropicInput {
             model: String::from("claude-sonnet-4-20250514"),
@@ -60,7 +78,7 @@ impl AnthropicService {
             messages: claude_messages,
             stream: true,
             system: Some(system),
-            tools: ToolType::all_tools(),
+            tools: ToolType::all_tools(state),
         };
 
         let event_sender = self.event_sender.clone();

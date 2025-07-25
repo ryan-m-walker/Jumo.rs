@@ -1,5 +1,9 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 
+use ratatui::style::Color;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +12,7 @@ use crate::{
         log::Log,
         message::{Message, Role},
     },
+    emote::Emote,
     widgets::views::{home::HomeViewState, logs::LogsViewState},
 };
 
@@ -17,7 +22,7 @@ pub enum Speaker {
     Assistant,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub enum View {
     #[default]
     /// Main home view that shows basic input and status information.
@@ -25,6 +30,15 @@ pub enum View {
 
     /// View for displaying application logs.
     Logs,
+}
+
+impl Display for View {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            View::Home => write!(f, "Home"),
+            View::Logs => write!(f, "Logs"),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -41,6 +55,8 @@ pub struct AppState {
     pub audio_input_device: String,
     pub audio_output_device: String,
     pub tool_input_buffers: HashMap<(String, usize), String>,
+    pub emote: Emote,
+    pub color: Color,
 
     pub view: View,
     pub home_view: HomeViewState,

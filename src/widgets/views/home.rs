@@ -1,6 +1,6 @@
 use ratatui::{
     buffer::Buffer,
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     text::Line,
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
@@ -28,9 +28,19 @@ impl<'a> HomeViewWidget<'a> {
 
 impl Widget for HomeViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+
+        let face_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(layout[0]);
+
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .style(Style::default().fg(Color::Yellow));
+            .style(Style::default().fg(self.state.color));
 
         if let Some(err) = &self.state.error {
             let error_message = format!("Error: {err}");
@@ -75,7 +85,7 @@ impl Widget for HomeViewWidget<'_> {
                         let input = serde_json::to_string(input).unwrap();
                         lines.push(Line::from(""));
                         lines.push(Line::from(format!("[Tool Call] {name}:")));
-                        lines.push(Line::from(format!("{input}")));
+                        lines.push(Line::from(input));
                     }
                     _ => {}
                 }
@@ -84,10 +94,13 @@ impl Widget for HomeViewWidget<'_> {
 
         all_lines.extend(lines);
 
+        block.clone().render(face_layout[0], buf);
+        block.clone().render(face_layout[1], buf);
+
         Paragraph::new(all_lines)
             .style(Style::default().fg(Color::Reset))
             .block(block)
             .wrap(Wrap { trim: true })
-            .render(area, buf);
+            .render(layout[1], buf);
     }
 }

@@ -43,7 +43,7 @@ impl Widget for NavTabs<'_> {
                     Span::styled(
                         format!("[{}] {} ", i + 1, tab.title),
                         if tab.is_active {
-                            Style::default().fg(Color::Yellow).bold()
+                            Style::default().fg(self.state.color).bold()
                         } else {
                             Style::default().fg(Color::DarkGray)
                         },

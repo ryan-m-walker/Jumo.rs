@@ -1,8 +1,9 @@
 use rusqlite::Connection;
+use uuid::Uuid;
 
 use crate::database::models::{
     Model,
-    log::Log,
+    log::{Log, LogLevel},
     message::{Message, Role},
 };
 
@@ -14,7 +15,15 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Self {
-        let connection = Connection::open("./data/v1.db").expect("Failed to open database");
+        let connection = match Connection::open("./data/v1.db") {
+            Ok(connection) => connection,
+            Err(err) => {
+                eprintln!("Failed to open database: {err}");
+                ratatui::restore();
+                std::process::exit(1);
+            }
+        };
+
         Self { connection }
     }
 
@@ -89,5 +98,69 @@ impl Database {
         )?;
 
         Ok(())
+    }
+
+    pub fn insert_log(&self, text: &str, level: LogLevel) -> Result<(), anyhow::Error> {
+        let level_str = match level {
+            LogLevel::Info => "info",
+            LogLevel::Warn => "warn",
+            LogLevel::Error => "error",
+        };
+
+        self.connection.execute(
+            "INSERT INTO logs (id, text, level, timestamp) VALUES (?1, ?2, ?3, ?4)",
+            (
+                Uuid::new_v4().to_string(),
+                &text,
+                level_str,
+                &chrono::Utc::now().to_rfc3339(),
+            ),
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_logs(&self) -> Result<Vec<Log>, anyhow::Error> {
+        let mut stmt = self.connection.prepare(
+            "SELECT id, text, level, timestamp FROM logs ORDER BY timestamp DESC LIMIT 50",
+        )?;
+
+        let logs_iter = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let text: String = row.get(1)?;
+            let level_str: String = row.get(2)?;
+            let timestamp: String = row.get(3)?;
+
+            let level = match level_str.as_str() {
+                "info" => LogLevel::Info,
+                "warn" => LogLevel::Warn,
+                "error" => LogLevel::Error,
+                _ => {
+                    return Err(rusqlite::Error::InvalidColumnType(
+                        2,
+                        "level".to_string(),
+                        rusqlite::types::Type::Text,
+                    ));
+                }
+            };
+
+            Ok(Log {
+                id,
+                text,
+                level,
+                timestamp,
+            })
+        })?;
+
+        let mut logs: Vec<Log> = Vec::new();
+
+        for log in logs_iter {
+            match log {
+                Ok(log) => logs.push(log),
+                Err(err) => panic!("Failed to get log: {err}"),
+            }
+        }
+
+        Ok(logs)
     }
 }

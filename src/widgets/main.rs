@@ -37,7 +37,7 @@ impl Widget for MainWidget<'_> {
             .split(area);
 
         let block = Block::bordered()
-            .border_style(Style::new().yellow())
+            .style(Style::default().fg(self.state.color))
             .border_type(BorderType::Rounded);
 
         let messages = &self.state.messages;
