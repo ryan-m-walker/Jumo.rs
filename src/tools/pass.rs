@@ -30,7 +30,7 @@ impl Tool for PassTool {
     async fn execute(
         &self,
         _input: &str,
-        _app_state: &AppState,
+        _state: &AppState,
         _event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
         Ok(String::new())

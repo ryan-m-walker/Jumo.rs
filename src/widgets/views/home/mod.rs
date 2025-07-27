@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local, Offset, TimeZone};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -7,9 +8,12 @@ use ratatui::{
 };
 
 use crate::{
-    database::models::message::{ContentBlock, Role},
+    database::models::message::{ContentBlock, Message, Role},
     state::AppState,
 };
+
+mod audio_bars;
+use audio_bars::AudioBarsWidget;
 
 #[derive(Default, Debug, Clone)]
 pub struct HomeViewState {
@@ -30,13 +34,8 @@ impl Widget for HomeViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
             .split(area);
-
-        let face_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(layout[0]);
 
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
@@ -64,7 +63,24 @@ impl Widget for HomeViewWidget<'_> {
         let selected_message = assistant_messages.get(selected_message_index);
         let message_count = assistant_messages.len();
 
-        let nav_line = format!("[{}/{message_count}]", selected_message_index + 1);
+        let timestamp = match selected_message {
+            Some(message) => {
+                if let Some(created_at) = &message.created_at {
+                    let ts: DateTime<Local> =
+                        DateTime::parse_from_rfc3339(created_at).unwrap().into();
+
+                    ts.format("%b %d, %I:%M:%S%P").to_string()
+                } else {
+                    String::new()
+                }
+            }
+            None => String::new(),
+        };
+
+        let nav_line = format!(
+            "[{}/{message_count}] {timestamp}",
+            selected_message_index + 1
+        );
 
         let mut all_lines = vec![
             Line::from(nav_line).style(Style::default().fg(Color::Reset).bold()),
@@ -94,7 +110,8 @@ impl Widget for HomeViewWidget<'_> {
 
         all_lines.extend(lines);
 
-        block.clone().render(layout[0], buf);
+        // Render audio bars in the top section
+        AudioBarsWidget::new(self.state).render(layout[0], buf);
 
         Paragraph::new(all_lines)
             .style(Style::default().fg(Color::Reset))

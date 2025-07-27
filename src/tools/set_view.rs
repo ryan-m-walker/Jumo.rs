@@ -1,6 +1,6 @@
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 use crate::{
     events::AppEvent,
@@ -15,6 +15,7 @@ pub struct SetViewToolInputSchema {
 
 #[derive(Serialize, Deserialize)]
 pub struct SetViewToolOutput {
+    pub previous_view: View,
     pub new_view: View,
 }
 
@@ -34,13 +35,14 @@ impl Tool for SetViewTool {
     async fn execute(
         &self,
         input: &str,
-        _app_state: &AppState,
+        state: &AppState,
         event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
-        let parsed_input: SetViewToolInputSchema = serde_json::from_str(&input)?;
+        let parsed_input: SetViewToolInputSchema = serde_json::from_str(input)?;
 
         let output = SetViewToolOutput {
-            new_view: parsed_input.view.clone(),
+            previous_view: state.view,
+            new_view: parsed_input.view,
         };
 
         event_sender

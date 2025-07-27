@@ -8,6 +8,7 @@ mod app;
 mod audio;
 mod database;
 mod emote;
+mod environment;
 mod events;
 mod prompts;
 mod services;

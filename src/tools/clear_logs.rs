@@ -37,7 +37,7 @@ impl Tool for ClearLogsTool {
     async fn execute(
         &self,
         _input: &str,
-        _app_state: &AppState,
+        _state: &AppState,
         event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
         event_sender.send(AppEvent::ClearLogs).await?;

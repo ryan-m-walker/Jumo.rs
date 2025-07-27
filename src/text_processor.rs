@@ -33,6 +33,7 @@ impl TextProcessor {
 
             if let Some(color) = get_color(c) {
                 self.event_sender.send(AppEvent::SetColor(color)).await?;
+                continue;
             }
 
             if matches!(c, '.' | '!' | '?' | ';' | '\n') {

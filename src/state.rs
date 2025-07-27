@@ -12,14 +12,13 @@ use crate::{
         log::Log,
         message::{Message, Role},
     },
-    emote::Emote,
+    emote::{Emote, color_to_char, get_color},
     widgets::views::{home::HomeViewState, logs::LogsViewState},
 };
 
-#[derive(Debug, Clone)]
-pub enum Speaker {
-    User,
-    Assistant,
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PersistedState {
+    color: Option<char>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -93,5 +92,27 @@ impl AppState {
 
     pub fn log(&mut self, log: Log) {
         self.logs_view.logs.push(log);
+    }
+
+    pub async fn persist_state(&self) -> Result<(), anyhow::Error> {
+        let state = PersistedState {
+            color: color_to_char(self.color),
+        };
+
+        let serialized_state = serde_json::to_string(&state)?;
+        tokio::fs::write("./data/state.json", serialized_state).await?;
+
+        Ok(())
+    }
+
+    pub async fn load_state(&mut self) -> Result<(), anyhow::Error> {
+        let serialized_state = tokio::fs::read_to_string("./data/state.json").await?;
+        let state: PersistedState = serde_json::from_str(&serialized_state)?;
+
+        if let Some(color) = state.color {
+            self.color = get_color(color).unwrap_or(Color::Yellow);
+        }
+
+        Ok(())
     }
 }

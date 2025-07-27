@@ -12,7 +12,7 @@
 
 [x] Basic tool calling
 [ ] update(production = false) - git pull && cargo build && ./bin
-[ ] set_view(view) - set the active TUI view in app
+[x] set_view(view) - set the active TUI view in app
 [ ] shutdown() - quit app
 [ ] pass() - do nothing
 [ ] output_text(text) - print text to TUI output view
@@ -44,7 +44,7 @@
   - (Claude vision) https://docs.anthropic.com/en/docs/build-with-claude/vision 
   - (Webcam crate) https://crates.io/crates/nokhwa
 [ ] Thinking (https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)
-[ ] Emotes
+[ ] Emotes/Color
 
 ## Embedding
 

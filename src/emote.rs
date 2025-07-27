@@ -33,12 +33,27 @@ pub fn get_color(c: char) -> Option<Color> {
         '🟨' => Some(Color::Yellow),
         '🟦' => Some(Color::Blue),
         '🟪' => Some(Color::Magenta),
-        '⬜' => Some(Color::Reset),
         '🔴' => Some(Color::LightRed),
         '🟢' => Some(Color::LightGreen),
         '🟡' => Some(Color::LightYellow),
         '🔵' => Some(Color::LightBlue),
         '🟣' => Some(Color::LightMagenta),
+        _ => None,
+    }
+}
+
+pub fn color_to_char(c: Color) -> Option<char> {
+    match c {
+        Color::Red => Some('🟥'),
+        Color::Green => Some('🟩'),
+        Color::Yellow => Some('🟨'),
+        Color::Blue => Some('🟦'),
+        Color::Magenta => Some('🟪'),
+        Color::LightRed => Some('🔴'),
+        Color::LightGreen => Some('🟢'),
+        Color::LightYellow => Some('🟡'),
+        Color::LightBlue => Some('🔵'),
+        Color::LightMagenta => Some('🟣'),
         _ => None,
     }
 }

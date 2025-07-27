@@ -65,6 +65,10 @@ impl App {
     }
 
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
+        if let Err(err) = self.state.load_state().await {
+            self.log_error(&format!("Failed to load state: {err}"))?;
+        }
+
         self.state.is_app_running = true;
 
         self.db.init()?;
@@ -72,6 +76,7 @@ impl App {
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
+        self.state.home_view.message_index = self.state.get_assistant_message_count() - 1;
 
         let logs = self.db.get_logs()?;
         self.state.logs_view.logs = logs;
@@ -361,6 +366,10 @@ impl App {
             }
             AppEvent::SetColor(color) => {
                 self.state.color = color;
+
+                if let Err(err) = self.state.persist_state().await {
+                    self.log_error(&format!("Failed to persist state: {err}"))?;
+                }
             }
         }
 
@@ -403,19 +412,19 @@ impl App {
     }
 
     fn next_message(&mut self) {
-        if self.state.home_view.message_index == 0 {
-            return;
-        }
-
-        self.state.home_view.message_index -= 1;
-    }
-
-    fn previous_message(&mut self) {
         if self.state.home_view.message_index >= self.state.get_assistant_message_count() - 1 {
             return;
         }
 
         self.state.home_view.message_index += 1;
+    }
+
+    fn previous_message(&mut self) {
+        if self.state.home_view.message_index == 0 {
+            return;
+        }
+
+        self.state.home_view.message_index -= 1;
     }
 
     fn tab_view_backward(&mut self) {
