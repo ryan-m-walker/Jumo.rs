@@ -111,12 +111,13 @@ impl Widget for HomeViewWidget<'_> {
         all_lines.extend(lines);
 
         // Render audio bars in the top section
-        AudioBarsWidget::new(self.state).render(layout[0], buf);
+        // AudioBarsWidget::new(self.state).render(layout[0], buf);
 
         Paragraph::new(all_lines)
             .style(Style::default().fg(Color::Reset))
             .block(block)
             .wrap(Wrap { trim: true })
-            .render(layout[1], buf);
+            // .render(layout[1], buf);
+            .render(area, buf);
     }
 }

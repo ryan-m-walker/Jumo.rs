@@ -1,4 +1,4 @@
-use std::{io::Stdout, time::Duration};
+use std::{fs::OpenOptions, io::Stdout, io::Write, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
@@ -72,14 +72,23 @@ impl App {
         self.state.is_app_running = true;
 
         self.db.init()?;
+
         self.audio_player.start().await?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
-        self.state.home_view.message_index = self.state.get_assistant_message_count() - 1;
+
+        let message_count = self.state.get_assistant_message_count();
+        self.state.home_view.message_index = if message_count > 0 {
+            message_count - 1
+        } else {
+            0
+        };
 
         let logs = self.db.get_logs()?;
         self.state.logs_view.logs = logs;
+
+        self.fs_log("Got logs");
 
         self.log_info("App started")?;
 

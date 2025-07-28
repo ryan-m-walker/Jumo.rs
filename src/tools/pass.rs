@@ -33,6 +33,6 @@ impl Tool for PassTool {
         _state: &AppState,
         _event_sender: mpsc::Sender<AppEvent>,
     ) -> Result<String, anyhow::Error> {
-        Ok(String::new())
+        Ok(String::from("Passed successfully"))
     }
 }

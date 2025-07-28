@@ -1,4 +1,4 @@
-use std::panic;
+use std::{fs::OpenOptions, io::Write, panic};
 
 use colored::Colorize;
 
@@ -29,6 +29,7 @@ async fn main() {
     }));
 
     let mut app = App::new(terminal);
+
     if let Err(err) = app.start().await {
         ratatui::restore();
 
