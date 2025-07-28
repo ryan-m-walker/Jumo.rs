@@ -88,8 +88,6 @@ impl App {
         let logs = self.db.get_logs()?;
         self.state.logs_view.logs = logs;
 
-        self.fs_log("Got logs");
-
         self.log_info("App started")?;
 
         let period = Duration::from_secs_f32(1.0 / FRAMES_PER_SECOND);
