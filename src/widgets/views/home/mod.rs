@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, Offset, TimeZone};
+use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -8,12 +8,11 @@ use ratatui::{
 };
 
 use crate::{
-    database::models::message::{ContentBlock, Message, Role},
+    database::models::message::{ContentBlock, Role},
     state::AppState,
 };
 
 mod audio_bars;
-use audio_bars::AudioBarsWidget;
 
 #[derive(Default, Debug, Clone)]
 pub struct HomeViewState {
@@ -32,10 +31,10 @@ impl<'a> HomeViewWidget<'a> {
 
 impl Widget for HomeViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
-            .split(area);
+        // let layout = Layout::default()
+        //     .direction(Direction::Vertical)
+        //     .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+        //     .split(area);
 
         let block = Block::bordered()
             .border_type(BorderType::Rounded)

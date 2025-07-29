@@ -8,6 +8,7 @@ use crate::{
 pub mod emoting;
 pub mod overview;
 pub mod status;
+pub mod system_info;
 
 pub fn get_system_prompt(state: &AppState) -> String {
     [

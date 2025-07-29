@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, io::Write, panic};
+use std::panic;
 
 use colored::Colorize;
 
@@ -6,6 +6,7 @@ use crate::app::App;
 
 mod app;
 mod audio;
+mod camera;
 mod database;
 mod emote;
 mod environment;

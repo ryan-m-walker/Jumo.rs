@@ -400,6 +400,7 @@ impl App {
                     KeyCode::Tab => self.tab_view_forward(),
                     KeyCode::BackTab => self.tab_view_backward(),
 
+                    // messages
                     KeyCode::Right => self.next_message(),
                     KeyCode::Left => self.previous_message(),
                     _ => {}

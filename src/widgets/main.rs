@@ -41,7 +41,6 @@ impl Widget for MainWidget<'_> {
             .border_type(BorderType::Rounded);
 
         let messages = &self.state.messages;
-        let messages_len = messages.len();
 
         let most_recent_assistant_message = messages
             .iter()
