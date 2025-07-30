@@ -84,6 +84,12 @@ impl AnthropicService {
         let event_sender = self.event_sender.clone();
 
         tokio::spawn(async move {
+            let send_error = async |message: &str| {
+                let _ = event_sender
+                    .send(AppEvent::LLMGenerationError(message.to_string()))
+                    .await;
+            };
+
             let client = reqwest::Client::new();
 
             let resp = client
@@ -95,23 +101,23 @@ impl AnthropicService {
                 .send()
                 .await;
 
-            let Ok(resp) = resp else {
-                let message = String::from("Failed to send message to anthropic");
-                event_sender
-                    .send(AppEvent::LLMGenerationFailed(message))
-                    .await
-                    .unwrap();
-                return;
+            let resp = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    send_error(&format!("Failed to send message to anthropic: {e}")).await;
+                    return;
+                }
             };
 
             if !resp.status().is_success() {
-                let text = resp.text().await.unwrap();
-
-                event_sender
-                    .send(AppEvent::LLMGenerationFailed(text))
-                    .await
-                    .unwrap();
-
+                match resp.text().await {
+                    Ok(text) => {
+                        send_error(&format!("Failed to send message to Anthropic: {text}")).await;
+                    }
+                    Err(e) => {
+                        send_error(&format!("Failed to send message to Anthropic: {e}")).await;
+                    }
+                }
                 return;
             }
 
@@ -121,13 +127,12 @@ impl AnthropicService {
                 match event {
                     Ok(event) => {
                         if event.data.is_empty() {
-                            event_sender
+                            let _ = event_sender
                                 .send(AppEvent::Log(LogEventPayload {
                                     level: LogLevel::Info,
                                     message: String::from("Anthropic stream ended"),
                                 }))
-                                .await
-                                .unwrap();
+                                .await;
 
                             continue;
                         }
@@ -142,26 +147,17 @@ impl AnthropicService {
                                     event,
                                 };
 
-                                event_sender
-                                    .send(AppEvent::LLMStreamEvent(payload))
-                                    .await
-                                    .unwrap()
+                                let _ = event_sender.send(AppEvent::LLMStreamEvent(payload)).await;
                             }
                             Err(err) => {
                                 let data = &event.data;
                                 let message = format!("LLM error: {err} -> {data}");
-                                event_sender
-                                    .send(AppEvent::LLMGenerationError(message))
-                                    .await
-                                    .unwrap()
+                                send_error(&message).await;
                             }
                         }
                     }
                     Err(err) => {
-                        event_sender
-                            .send(AppEvent::LLMGenerationFailed(err.to_string()))
-                            .await
-                            .unwrap();
+                        send_error(&format!("Failed to send message to Anthropic: {err}")).await;
                     }
                 }
             }
@@ -170,10 +166,9 @@ impl AnthropicService {
                 message_id: message_id.clone(),
             };
 
-            event_sender
+            let _ = event_sender
                 .send(AppEvent::LLMGenerationCompleted(completed_payload))
-                .await
-                .unwrap();
+                .await;
         });
 
         Ok(())

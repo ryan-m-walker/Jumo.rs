@@ -65,6 +65,7 @@ pub enum AppEvent {
     // Audio events
     AudioRecordingStarted,
     AudioRecordingCompleted(TempPath),
+    AudioRecordingError(String),
     /// There was an error recording the audio causing the recording to stop
     AudioRecordingFailed(String),
     /// There was an error playing the audio but it did not stop the recording

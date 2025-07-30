@@ -62,30 +62,39 @@ impl AudioRecorder {
         self.channels = config.channels();
 
         let input_stream = match config.sample_format() {
-            cpal::SampleFormat::F32 => device
-                .build_input_stream(
-                    &config.into(),
-                    move |data: &[f32], _: &_| {
-                        tx.send(data.to_vec()).unwrap();
-                    },
-                    move |err| {
-                        eprintln!("an error occurred on the input audio stream: {err}");
-                    },
-                    None,
-                )
-                .unwrap(),
+            cpal::SampleFormat::F32 => device.build_input_stream(
+                &config.into(),
+                move |data: &[f32], _: &_| {
+                    let _ = tx.send(data.to_vec());
+                },
+                move |err| {
+                    eprintln!("an error occurred on the input audio stream: {err}");
+                },
+                None,
+            )?,
             _ => panic!("Unsupported sample format: {:?}", config.sample_format()),
         };
 
         self.input_stream = Some(input_stream);
-        let stream = self.input_stream.as_mut().unwrap();
+
+        let Some(stream) = self.input_stream.as_mut() else {
+            return Err(anyhow::anyhow!("Input stream is None"));
+        };
 
         let channels = self.channels;
         let sample_rate = self.sample_rate;
 
         stream.play()?;
 
+        let event_sender = self.event_sender.clone();
+
         tokio::spawn(async move {
+            let send_error = async |message: &str| {
+                let _ = event_sender
+                    .send(AppEvent::AudioRecordingError(message.to_string()))
+                    .await;
+            };
+
             let spec = WavSpec {
                 channels,
                 sample_rate,
@@ -93,15 +102,25 @@ impl AudioRecorder {
                 sample_format: hound::SampleFormat::Float,
             };
 
-            let mut writer = WavWriter::create(&temp_path, spec).unwrap();
+            let mut writer = match WavWriter::create(&temp_path, spec) {
+                Ok(writer) => writer,
+                Err(e) => {
+                    send_error(&format!("Failed to create WAV writer: {e}")).await;
+                    return;
+                }
+            };
 
             for data in rx {
                 for sample in data {
-                    writer.write_sample(sample).unwrap();
+                    if let Err(e) = writer.write_sample(sample) {
+                        send_error(&format!("Failed to write sample: {e}")).await;
+                    }
                 }
             }
 
-            writer.finalize().unwrap();
+            if let Err(e) = writer.finalize() {
+                send_error(&format!("Failed to finalize WAV file: {e}")).await;
+            }
         });
 
         Ok(())
@@ -117,7 +136,16 @@ impl AudioRecorder {
 
         self.input_stream = None;
 
-        let temp_file = self.temp_file.take().unwrap();
+        let Some(temp_file) = self.temp_file.take() else {
+            self.event_sender
+                .send(AppEvent::AudioRecordingFailed(String::from(
+                    "No temp file found",
+                )))
+                .await?;
+
+            return Ok(());
+        };
+
         let path = temp_file.into_temp_path();
 
         self.event_sender

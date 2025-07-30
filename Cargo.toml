@@ -16,8 +16,9 @@ eventsource-stream = "0.2.3"
 futures = "0.3.31"
 futures-util = "0.3.31"
 hound = "3.5.1"
+image = "0.25.6"
 indexmap = "2.10.0"
-nokhwa = { version = "0.10.9", features = ["input-native", "output-wgpu"] }
+nokhwa = { version = "0.10.9", features = ["input-native"] }
 ratatui = "0.29.0"
 reqwest = { version = "0.12.22", features = ["multipart", "json", "stream"] }
 ringbuf = "0.4.8"

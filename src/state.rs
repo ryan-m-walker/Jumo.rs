@@ -13,7 +13,7 @@ use crate::{
         message::{Message, Role},
     },
     emote::{Emote, color_to_char, get_color},
-    widgets::views::{chat::ChatViewState, home::HomeViewState, logs::LogsViewState},
+    widgets::views::{home::HomeViewState, logs::LogsViewState},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

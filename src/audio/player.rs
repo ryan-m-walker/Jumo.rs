@@ -50,37 +50,41 @@ impl AudioPlayer {
             buffer_size: BufferSize::Default,
         };
 
-        let (tx, rx) = mpsc::channel();
+        let (err_tx, err_rx) = mpsc::channel();
 
         let buffer = self.buffer.clone();
 
         let output_stream = device.build_output_stream(
             &config,
             move |data: &mut [f32], _| {
-                let mut buffer = buffer.lock().unwrap();
+                let Ok(mut buffer) = buffer.lock() else {
+                    return;
+                };
+
                 for sample in data.iter_mut() {
                     *sample = buffer.try_pop().unwrap_or(0.0);
                 }
             },
             move |err| {
-                tx.send(err).unwrap();
+                let _ = err_tx.send(err);
             },
             None,
         )?;
 
         let event_sender = self.event_sender.clone();
         tokio::spawn(async move {
-            for err in rx {
-                event_sender
+            for err in err_rx {
+                let _ = event_sender
                     .send(AppEvent::AudioPlaybackError(err.to_string()))
-                    .await
-                    .unwrap();
+                    .await;
             }
         });
 
         self.output_stream = Some(output_stream);
-        let stream = self.output_stream.as_mut().unwrap();
-        stream.play()?;
+
+        if let Some(stream) = self.output_stream.as_mut() {
+            stream.play()?;
+        }
 
         Ok(())
     }

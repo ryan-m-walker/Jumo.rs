@@ -121,6 +121,11 @@ impl App {
                     self.state.error = Some(error.to_string());
                 }
             }
+            AppEvent::AudioRecordingError(error) => {
+                self.log_error(&format!("Audio recording error: {error}"))?;
+                self.state.error = Some(error.to_string());
+                self.state.is_audio_recording_running = false;
+            }
             AppEvent::AudioRecordingFailed(error) => {
                 self.log_error(&format!("Audio recording failed: {error}"))?;
                 self.state.error = Some(error.to_string());

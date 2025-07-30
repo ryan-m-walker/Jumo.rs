@@ -2,7 +2,7 @@ use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style, Styled, Stylize},
     text::Line,
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
@@ -65,10 +65,10 @@ impl Widget for HomeViewWidget<'_> {
         let timestamp = match selected_message {
             Some(message) => {
                 if let Some(created_at) = &message.created_at {
-                    let ts: DateTime<Local> =
-                        DateTime::parse_from_rfc3339(created_at).unwrap().into();
-
-                    ts.format("%b %d, %I:%M:%S%P").to_string()
+                    match DateTime::parse_from_rfc3339(created_at) {
+                        Ok(ts) => ts.format("%b %d, %I:%M:%S%P").to_string(),
+                        Err(_) => String::from("Invalid Timestamp"),
+                    }
                 } else {
                     String::new()
                 }
@@ -97,10 +97,21 @@ impl Widget for HomeViewWidget<'_> {
                         }
                     }
                     ContentBlock::ToolUse { name, input, .. } => {
-                        let input = serde_json::to_string(input).unwrap();
-                        lines.push(Line::from(""));
-                        lines.push(Line::from(format!("[Tool Call] {name}:")));
-                        lines.push(Line::from(input));
+                        match serde_json::to_string(input) {
+                            Ok(input) => {
+                                lines.push(Line::from(""));
+                                lines.push(Line::from(format!("[Tool Call] {name}:")));
+                                lines.push(Line::from(input));
+                            }
+                            Err(e) => {
+                                lines.push(Line::from(""));
+                                lines.push(Line::from(format!("[Tool Call] {name}:")));
+                                lines.push(
+                                    Line::from(format!("Error: {e}"))
+                                        .style(Style::default().fg(Color::Red)),
+                                );
+                            }
+                        }
                     }
                     _ => {}
                 }

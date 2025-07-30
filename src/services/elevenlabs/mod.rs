@@ -1,7 +1,6 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use futures::{SinkExt, StreamExt};
 use tempfile::TempPath;
-use tokio::fs;
 use tokio::{fs::File, io::AsyncReadExt, sync::mpsc};
 use tokio_tungstenite::tungstenite::Bytes;
 use tokio_tungstenite::{
@@ -84,35 +83,44 @@ impl ElevenLabsService {
         let event_sender = self.event_sender.clone();
 
         tokio::spawn(async move {
+            let send_error = async |message: &str| {
+                let _ = event_sender
+                    .send(AppEvent::TTSFailed(message.to_string()))
+                    .await;
+            };
+
             while let Some(msg) = ws_stream.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
                         let json = match serde_json::from_str::<WebSocketAudioOutput>(&text) {
                             Ok(json) => json,
                             Err(e) => {
-                                // TODO: better error handling
-                                fs::write("error.txt", format!("{text}")).await.unwrap();
-                                panic!("Failed to deserialize JSON: {e}");
+                                send_error(&format!("Failed to deserialize JSON: {e}")).await;
+                                return;
                             }
                         };
 
                         if let Some(audio) = json.audio {
-                            let decoded = BASE64_STANDARD.decode(audio).unwrap();
+                            let decoded = match BASE64_STANDARD.decode(audio) {
+                                Ok(decoded) => decoded,
+                                Err(e) => {
+                                    send_error(&format!("Failed to decode audio: {e}")).await;
+                                    return;
+                                }
+                            };
+
                             let audio_bytes = Bytes::from(decoded);
-                            event_sender
-                                .send(AppEvent::TTSChunk(audio_bytes))
-                                .await
-                                .unwrap();
+                            let _ = event_sender.send(AppEvent::TTSChunk(audio_bytes)).await;
                         }
                     }
                     Ok(Message::Close(_)) => {
                         break;
                     }
                     Ok(msg) => {
-                        panic!("Unexpected message type: {msg}");
+                        send_error(&format!("Unexpected message type: {msg}")).await;
                     }
                     Err(e) => {
-                        eprintln!("WebSocket error: {e}");
+                        send_error(&format!("WebSocket error: {e}")).await;
                         break;
                     }
                 }
@@ -157,24 +165,26 @@ impl ElevenLabsService {
             .send(AppEvent::TranscriptionStarted)
             .await?;
 
+        let client = reqwest::Client::new();
+        let mut file = File::open(audio_path).await?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).await?;
+
         let event_sender = self.event_sender.clone();
 
-        let client = reqwest::Client::new();
-        let mut file = File::open(audio_path).await.unwrap();
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).await.unwrap();
-
         tokio::spawn(async move {
+            let send_error = async |message: &str| {
+                let _ = event_sender
+                    .send(AppEvent::TranscriptionFailed(message.to_string()))
+                    .await;
+            };
+
             let file_bytes = reqwest::multipart::Part::bytes(buffer)
                 .file_name("recording.wav")
                 .mime_str("audio/wav");
 
             let Ok(file_bytes) = file_bytes else {
-                let message = String::from("Failed to create file bytes");
-                event_sender
-                    .send(AppEvent::TranscriptionFailed(message))
-                    .await
-                    .unwrap();
+                send_error("Failed to create file bytes").await;
                 return;
             };
 
@@ -188,31 +198,24 @@ impl ElevenLabsService {
                 .multipart(form)
                 .send()
                 .await;
+
             let Ok(resp) = resp else {
-                let message = String::from("Failed to send audio to ElevenLabs");
-                event_sender
-                    .send(AppEvent::TranscriptionFailed(message))
-                    .await
-                    .unwrap();
+                send_error("Failed to send audio to ElevenLabs").await;
                 return;
             };
 
             let json = resp.json::<ElevenLabsTranscription>().await;
+
             let Ok(json) = json else {
-                let message = String::from("Failed to get JSON from ElevenLabs");
-                event_sender
-                    .send(AppEvent::TranscriptionFailed(message))
-                    .await
-                    .unwrap();
+                send_error("Failed to get JSON from ElevenLabs").await;
                 return;
             };
 
             let text = json.text;
 
-            event_sender
+            let _ = event_sender
                 .send(AppEvent::TranscriptionCompleted(text))
-                .await
-                .unwrap();
+                .await;
         });
 
         Ok(())

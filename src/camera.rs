@@ -1,10 +1,7 @@
-use std::io::Write;
-
+use image::ImageBuffer;
 use nokhwa::{
-    Buffer, native_api_backend,
     pixel_format::RgbFormat,
-    query,
-    utils::{RequestedFormat, RequestedFormatType},
+    utils::{CameraIndex, RequestedFormat, RequestedFormatType},
 };
 
 pub struct Camera {
@@ -18,35 +15,37 @@ impl Camera {
         // Self { event_sender }
     }
 
-    // pub fn capture(&mut self) -> Result<Buffer, anyhow::Error> {
-    // let backend = native_api_backend().unwrap();
-    // let devices = query(backend)?;
-    //
-    // let device = devices
-    //     .iter()
-    //     .find(|d| d.human_name() != "Logitech StreamCam");
-    //
-    // let Some(device) = device else {
-    //     anyhow::bail!("Camera device not found");
-    // };
-    //
-    // let requested =
-    //     RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
-    //
-    // let mut camera = nokhwa::Camera::new(device.index().to_owned(), requested)?;
-    //
-    // println!("Camera opened");
-    //
-    // camera.open_stream()?;
-    // let frame = camera.frame()?;
-    // camera.stop_stream()?;
-    //
-    // let decoded = frame.decode_image::<RgbFormat>()?;
-    //
-    // let mut file = std::fs::File::create("frame.jpg")?;
-    // file.write_all(&frame.buffer_bytes())?;
-    // file.flush()?;
-    //
-    // Ok(frame)
-    // }
+    pub fn capture(&mut self) -> Result<(), anyhow::Error> {
+        let requested =
+            RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
+        let mut camera = nokhwa::Camera::new(CameraIndex::Index(0), requested).unwrap();
+
+        camera.open_stream().unwrap();
+        let buffer = camera.frame().unwrap();
+        camera.stop_stream().unwrap();
+
+        let decoded = buffer.decode_image::<RgbFormat>().unwrap();
+        let width = decoded.width();
+        let height = decoded.height();
+
+        let img =
+            ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_raw(width, height, decoded.into_raw())
+                .unwrap();
+
+        img.save("frame.jpg").unwrap();
+
+        Ok(())
+    }
+
+    pub fn start_nokhwa() -> Result<(), anyhow::Error> {
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        nokhwa::nokhwa_initialize(move |_| {
+            let _ = tx.send(());
+        });
+
+        rx.recv().unwrap();
+
+        Ok(())
+    }
 }
