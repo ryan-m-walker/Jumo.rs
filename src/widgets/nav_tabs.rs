@@ -34,6 +34,10 @@ impl Widget for NavTabs<'_> {
                 title: String::from("Logs"),
                 is_active: self.state.view == View::Logs,
             },
+            NavTab {
+                title: String::from("Chat"),
+                is_active: self.state.view == View::Chat,
+            },
         ];
 
         Line::from(

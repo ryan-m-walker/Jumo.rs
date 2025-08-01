@@ -70,6 +70,8 @@ pub enum AppEvent {
     AudioRecordingFailed(String),
     /// There was an error playing the audio but it did not stop the recording
     AudioPlaybackError(String),
+    AudioDetected(f32),
+    AudioNotDetected,
 
     AudioSetInputDevice(String),
     AudioSetOutputDevice(String),

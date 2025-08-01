@@ -13,7 +13,7 @@ use crate::{
         message::{Message, Role},
     },
     emote::{Emote, color_to_char, get_color},
-    widgets::views::{home::HomeViewState, logs::LogsViewState},
+    widgets::views::{chat::ChatViewState, home::HomeViewState, logs::LogsViewState},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -29,6 +29,8 @@ pub enum View {
 
     /// View for displaying application logs.
     Logs,
+
+    Chat,
 }
 
 impl Display for View {
@@ -36,6 +38,7 @@ impl Display for View {
         match self {
             View::Home => write!(f, "Home"),
             View::Logs => write!(f, "Logs"),
+            View::Chat => write!(f, "Chat"),
         }
     }
 }
@@ -60,6 +63,10 @@ pub struct AppState {
     pub view: View,
     pub home_view: HomeViewState,
     pub logs_view: LogsViewState,
+    pub chat_view: ChatViewState,
+
+    pub audio_detected: bool,
+    pub input_volume: f32,
 }
 
 impl AppState {

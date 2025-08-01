@@ -1,8 +1,9 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::{Color, Style},
-    widgets::{Block, Padding, Paragraph, Widget},
+    text::{Line, Span},
+    widgets::Widget,
 };
 
 use crate::state::AppState;
@@ -12,7 +13,7 @@ pub struct StatusLine<'a> {
 }
 
 struct Status {
-    code: String,
+    code: &'static str,
     active: bool,
 }
 
@@ -24,19 +25,19 @@ impl<'a> StatusLine<'a> {
     fn get_statuses(&self) -> Vec<Status> {
         vec![
             Status {
-                code: String::from("REC"),
+                code: "REC",
                 active: self.state.is_audio_recording_running,
             },
             Status {
-                code: String::from("STT"),
+                code: "STT",
                 active: self.state.is_audio_transcription_running,
             },
             Status {
-                code: String::from("LLM"),
+                code: "LLM",
                 active: self.state.is_llm_message_running,
             },
             Status {
-                code: String::from("TTS"),
+                code: "TTS",
                 active: self.state.is_tts_running,
             },
         ]
@@ -45,20 +46,9 @@ impl<'a> StatusLine<'a> {
 
 impl Widget for StatusLine<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(5),
-                Constraint::Length(5),
-                Constraint::Length(5),
-                Constraint::Length(5),
-                Constraint::Fill(1),
-            ])
-            .split(area);
+        let mut spans = Vec::with_capacity(16);
 
-        for (i, status) in self.get_statuses().iter().enumerate() {
-            let block = Block::default().padding(Padding::horizontal(1));
-
+        for status in self.get_statuses() {
             let bg = if status.active {
                 self.state.color
             } else {
@@ -71,18 +61,33 @@ impl Widget for StatusLine<'_> {
                 Color::DarkGray
             };
 
-            let code = Paragraph::new(status.code.clone())
-                .style(Style::new().fg(fg).bg(bg))
-                .block(block);
-
-            code.render(chunks[i], buf);
+            spans.push(Span::styled(
+                format!(" {} ", status.code),
+                Style::new().fg(fg).bg(bg),
+            ));
         }
 
-        let devices = Paragraph::new(format!(
-            " [Mic]: {} | [Speaker]: {}",
-            self.state.audio_input_device, self.state.audio_output_device
+        let volume = self.state.input_volume;
+        let volume_db = 20.0 * volume.max(0.001).log10(); // Convert to dB
+        let volume_percent = ((volume_db + 60.0) / 60.0 * 100.0).max(0.0); // -60dB to 0dB range
+
+        spans.push(Span::styled(" IN ", Style::new().fg(self.state.color)));
+        spans.push(Span::styled(
+            format!("({}) ", &self.state.audio_input_device),
+            Style::new().fg(self.state.color),
         ));
 
-        devices.render(chunks[4], buf);
+        for i in 0..10 {
+            let color = if volume_percent >= ((i as f32 + 1.0) * 10.0) {
+                self.state.color
+            } else {
+                Color::DarkGray
+            };
+
+            spans.push(Span::styled("■", Style::new().fg(color)));
+        }
+
+        let bars = Line::from(spans);
+        bars.render(area, buf);
     }
 }

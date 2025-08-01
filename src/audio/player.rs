@@ -18,16 +18,21 @@ pub struct AudioPlayer {
     event_sender: tokio::sync::mpsc::Sender<AppEvent>,
     output_stream: Option<cpal::Stream>,
     buffer: AudioBuffer,
+    detection_buffer: AudioBuffer,
+    volume_threshold: f32,
 }
 
 impl AudioPlayer {
     pub fn new(event_sender: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
         let buffer_size = 48000 * 100;
+        let detection_buffer_size = 44100 * 2; // 2 seconds at 44.1kHz
 
         Self {
             event_sender,
             output_stream: None,
             buffer: Arc::new(Mutex::new(HeapRb::new(buffer_size))),
+            detection_buffer: Arc::new(Mutex::new(HeapRb::new(detection_buffer_size))),
+            volume_threshold: 0.01,
         }
     }
 
@@ -35,7 +40,7 @@ impl AudioPlayer {
         let host = cpal::default_host();
 
         let Some(device) = host.default_output_device() else {
-            return Err(anyhow::anyhow!("No audio device found"));
+            return Err(anyhow::anyhow!("No default output audio device found"));
         };
 
         let device_name = device.name().unwrap_or(String::from("<unknown>"));

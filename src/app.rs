@@ -3,6 +3,7 @@ use std::{fs::OpenOptions, io::Stdout, io::Write, time::Duration};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{Terminal, prelude::CrosstermBackend};
+use tui_input::backend::crossterm::EventHandler;
 use uuid::Uuid;
 
 use crate::{
@@ -19,7 +20,7 @@ use crate::{
     state::View,
     text_processor::TextProcessor,
     tools::tools::ToolType,
-    widgets::app_layout::AppLayout,
+    widgets::{app_layout::AppLayout, views::chat::ChatViewMode},
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
 use crate::{
@@ -73,7 +74,7 @@ impl App {
 
         self.db.init()?;
 
-        self.audio_player.start().await?;
+        tokio::try_join!(self.audio_player.start(), self.audio_recorder._start())?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
@@ -130,6 +131,13 @@ impl App {
                 self.log_error(&format!("Audio recording failed: {error}"))?;
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_recording_running = false;
+            }
+            AppEvent::AudioDetected(volume) => {
+                self.state.input_volume = volume;
+                self.state.audio_detected = true;
+            }
+            AppEvent::AudioNotDetected => {
+                self.state.audio_detected = false;
             }
             AppEvent::AudioPlaybackError(error) => {
                 self.log_error(&format!("Audio playback error: {error}"))?;
@@ -389,8 +397,24 @@ impl App {
     }
 
     async fn handle_terminal_event(&mut self, event: &Event) -> Result<(), anyhow::Error> {
+        if self.state.view == View::Chat && self.state.chat_view.mode == ChatViewMode::Insert {
+            self.state.chat_view.input.handle_event(event);
+        }
+
         match event {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                if self.state.chat_view.mode == ChatViewMode::Insert {
+                    match key_event.code {
+                        // general
+                        KeyCode::Esc => {
+                            self.state.chat_view.mode = ChatViewMode::Normal;
+                        }
+                        _ => {}
+                    }
+
+                    return Ok(());
+                }
+
                 match key_event.code {
                     // general
                     KeyCode::Esc => self.cancel(),
@@ -398,10 +422,16 @@ impl App {
 
                     // audio
                     KeyCode::Char(' ') => self.toggle_recording().await?,
+                    KeyCode::Char('i') => {
+                        if self.state.chat_view.mode == ChatViewMode::Normal {
+                            self.state.chat_view.mode = ChatViewMode::Insert;
+                        }
+                    }
 
                     // navigation
                     KeyCode::Char('1') => self.state.view = View::Home,
                     KeyCode::Char('2') => self.state.view = View::Logs,
+                    KeyCode::Char('3') => self.state.view = View::Chat,
                     KeyCode::Tab => self.tab_view_forward(),
                     KeyCode::BackTab => self.tab_view_backward(),
 
@@ -420,7 +450,16 @@ impl App {
     fn tab_view_forward(&mut self) {
         match self.state.view {
             View::Home => self.state.view = View::Logs,
+            View::Logs => self.state.view = View::Chat,
+            View::Chat => self.state.view = View::Home,
+        }
+    }
+
+    fn tab_view_backward(&mut self) {
+        match self.state.view {
+            View::Home => self.state.view = View::Chat,
             View::Logs => self.state.view = View::Home,
+            View::Chat => self.state.view = View::Logs,
         }
     }
 
@@ -438,13 +477,6 @@ impl App {
         }
 
         self.state.home_view.message_index -= 1;
-    }
-
-    fn tab_view_backward(&mut self) {
-        match self.state.view {
-            View::Home => self.state.view = View::Logs,
-            View::Logs => self.state.view = View::Home,
-        }
     }
 
     fn render(&mut self) -> Result<(), anyhow::Error> {

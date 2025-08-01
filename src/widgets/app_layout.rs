@@ -10,7 +10,7 @@ use crate::{
         header::Header,
         nav_tabs::NavTabs,
         status_line::StatusLine,
-        views::{home::HomeViewWidget, logs::LogsViewWidget},
+        views::{chat::ChatViewWidget, home::HomeViewWidget, logs::LogsViewWidget},
     },
 };
 
@@ -42,6 +42,7 @@ impl Widget for AppLayout<'_> {
         match self.state.view {
             View::Home => HomeViewWidget::new(self.state).render(layout[2], buf),
             View::Logs => LogsViewWidget::new(self.state).render(layout[2], buf),
+            View::Chat => ChatViewWidget::new(self.state).render(layout[2], buf),
         }
 
         StatusLine::new(self.state).render(layout[3], buf);

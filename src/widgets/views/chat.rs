@@ -1,4 +1,5 @@
 use ratatui::prelude::*;
+use ratatui::widgets::Paragraph;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -9,17 +10,25 @@ use ratatui::{
         // Widget
     },
 };
-use tui_textarea::TextArea;
+use tui_input::Input;
 
 use crate::state::AppState;
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatViewMode {
+    #[default]
+    Normal,
+    Insert,
+}
+
 #[derive(Default, Debug, Clone)]
-pub struct ChatViewState<'a> {
-    pub textarea: TextArea<'
+pub struct ChatViewState {
+    pub input: Input,
+    pub mode: ChatViewMode,
 }
 
 pub struct ChatViewWidget<'a> {
-    state: &'a AppState<'a>,
+    state: &'a AppState,
 }
 
 impl<'a> ChatViewWidget<'a> {
@@ -28,14 +37,20 @@ impl<'a> ChatViewWidget<'a> {
     }
 }
 
-impl ratatui::widgets::Widget for ChatViewWidget<'_> {
+impl Widget for ChatViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(self.state.color));
 
-        let mut textarea = TextArea::default();
+        let title = if self.state.chat_view.mode == ChatViewMode::Insert {
+            "[insert]"
+        } else {
+            "[normal]"
+        };
 
-        textarea.render(area, buf);
+        let input = Paragraph::new(self.state.chat_view.input.value())
+            .block(Block::bordered().title(title));
+        input.render(area, buf);
     }
 }
