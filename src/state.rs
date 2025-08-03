@@ -13,6 +13,7 @@ use crate::{
         message::{Message, Role},
     },
     emote::{Emote, color_to_char, get_color},
+    services::elevenlabs::voices::Voice,
     widgets::views::{chat::ChatViewState, home::HomeViewState, logs::LogsViewState},
 };
 

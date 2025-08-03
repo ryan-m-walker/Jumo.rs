@@ -1,6 +1,6 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use futures::{SinkExt, StreamExt};
-use tokio::{fs::File, io::AsyncReadExt, sync::mpsc};
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
 use tokio_tungstenite::{
     connect_async,
@@ -8,19 +8,17 @@ use tokio_tungstenite::{
 };
 
 use crate::services::elevenlabs::types::WebSocketEndMessage;
+use crate::services::elevenlabs::voices::{Voice, get_voice_id};
 use crate::{
     events::AppEvent,
-    services::elevenlabs::{
-        types::{
-            ElevenLabsTranscription, VoiceSettings, WebSocketAudioOutput, WebSocketInitMessage,
-            WebSocketTextChunk, WsSink, WsStream,
-        },
-        voices::JULES_VOICE_ID,
+    services::elevenlabs::types::{
+        ElevenLabsTranscription, VoiceSettings, WebSocketAudioOutput, WebSocketInitMessage,
+        WebSocketTextChunk, WsSink, WsStream,
     },
 };
 
 mod types;
-mod voices;
+pub mod voices;
 
 const OUTPUT_FORMAT: &str = "pcm_44100";
 
@@ -51,8 +49,10 @@ impl ElevenLabsService {
             return Ok(());
         };
 
+        let voice_id = get_voice_id(Voice::Flynn);
+
         let url = format!(
-            "wss://api.elevenlabs.io/v1/text-to-speech/{JULES_VOICE_ID}/stream-input?output_format={OUTPUT_FORMAT}"
+            "wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?output_format={OUTPUT_FORMAT}"
         );
         let mut request = url.into_client_request()?;
         request.headers_mut().insert("xi-api-key", api_key.parse()?);

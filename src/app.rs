@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, io::Stdout, io::Write, time::Duration};
+use std::{io::Stdout, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
