@@ -113,17 +113,14 @@ impl App {
                 self.log_info("Audio recording started")?;
                 self.state.is_audio_recording_running = true;
             }
-            AppEvent::AudioRecordingCompleted(temp_path) => {
+            AppEvent::AudioRecordingCompleted(audio_bytes) => {
                 self.log_info("Audio recording completed")?;
                 self.state.is_audio_recording_running = false;
 
-                if let Err(error) = self.elevenlabs.transcribe(&temp_path).await {
+                if let Err(error) = self.elevenlabs.transcribe(audio_bytes).await {
                     self.log_error(&format!("Audio recording failed: {error}"))?;
                     self.state.error = Some(error.to_string());
                 }
-            }
-            AppEvent::AudioRecordingEnded(_bytes) => {
-                // TODO
             }
             AppEvent::AudioRecordingError(error) => {
                 self.log_error(&format!("Audio recording error: {error}"))?;

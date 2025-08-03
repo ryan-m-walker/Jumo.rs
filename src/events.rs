@@ -1,5 +1,4 @@
 use ratatui::style::Color;
-use tempfile::TempPath;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
 
@@ -64,8 +63,7 @@ pub struct LLMGenerationCompletedEventPayload {
 pub enum AppEvent {
     // Audio events
     AudioRecordingStarted,
-    AudioRecordingCompleted(TempPath),
-    AudioRecordingEnded(Vec<u8>),
+    AudioRecordingCompleted(Vec<u8>),
     AudioRecordingError(String),
     /// There was an error recording the audio causing the recording to stop
     AudioRecordingFailed(String),

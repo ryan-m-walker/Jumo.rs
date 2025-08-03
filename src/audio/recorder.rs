@@ -213,7 +213,9 @@ impl AudioRecorder {
                 return;
             }
 
-            let _ = event_sender.send(AppEvent::AudioRecordingEnded(buf)).await;
+            let _ = event_sender
+                .send(AppEvent::AudioRecordingCompleted(buf))
+                .await;
         });
     }
 

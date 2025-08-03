@@ -1,6 +1,5 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use futures::{SinkExt, StreamExt};
-use tempfile::TempPath;
 use tokio::{fs::File, io::AsyncReadExt, sync::mpsc};
 use tokio_tungstenite::tungstenite::Bytes;
 use tokio_tungstenite::{
@@ -154,7 +153,7 @@ impl ElevenLabsService {
         Ok(())
     }
 
-    pub async fn transcribe(&mut self, audio_path: &TempPath) -> Result<(), anyhow::Error> {
+    pub async fn transcribe(&mut self, buffer: Vec<u8>) -> Result<(), anyhow::Error> {
         let Ok(api_key) = std::env::var("ELEVENLABS_API_KEY") else {
             let message = String::from("ELEVENLABS_API_KEY is not set");
             self.event_sender.send(AppEvent::TTSFailed(message)).await?;
@@ -166,9 +165,6 @@ impl ElevenLabsService {
             .await?;
 
         let client = reqwest::Client::new();
-        let mut file = File::open(audio_path).await?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).await?;
 
         let event_sender = self.event_sender.clone();
 
