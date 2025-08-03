@@ -185,30 +185,35 @@ impl AudioRecorder {
 
             let mut buf = Vec::new();
             let cursor = Cursor::new(&mut buf);
-            let mut writer = WavWriter::new(cursor, spec).unwrap();
+
+            let mut writer = match WavWriter::new(cursor, spec) {
+                Ok(writer) => writer,
+                Err(err) => {
+                    send_error(&format!("Failed to create wav writer: {err}")).await;
+                    return;
+                }
+            };
 
             for data in rx {
                 for sample in data {
-                    let is_recording = is_recording.load(Ordering::Relaxed);
-
-                    if !is_recording {
+                    if !is_recording.load(Ordering::Relaxed) {
                         break;
                     }
 
-                    if is_recording {
-                        if let Err(e) = writer.write_sample(sample) {
-                            send_error(&format!("Failed to write sample: {e}")).await;
-                        }
+                    if let Err(e) = writer.write_sample(sample) {
+                        send_error(&format!("Failed to write sample: {e}")).await;
                     }
                 }
             }
 
-            writer.finalize().unwrap();
+            if let Err(e) = writer.finalize() {
+                let _ = event_sender
+                    .send(AppEvent::AudioRecordingFailed(e.to_string()))
+                    .await;
+                return;
+            }
 
-            event_sender
-                .send(AppEvent::AudioRecordingEnded(buf))
-                .await
-                .unwrap();
+            let _ = event_sender.send(AppEvent::AudioRecordingEnded(buf)).await;
         });
     }
 
