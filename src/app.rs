@@ -74,7 +74,7 @@ impl App {
 
         self.db.init()?;
 
-        tokio::try_join!(self.audio_player.start(), self.audio_recorder._start())?;
+        tokio::try_join!(self.audio_player.start(), self.audio_recorder.start())?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
@@ -121,6 +121,9 @@ impl App {
                     self.log_error(&format!("Audio recording failed: {error}"))?;
                     self.state.error = Some(error.to_string());
                 }
+            }
+            AppEvent::AudioRecordingEnded(_bytes) => {
+                // TODO
             }
             AppEvent::AudioRecordingError(error) => {
                 self.log_error(&format!("Audio recording error: {error}"))?;
@@ -503,10 +506,10 @@ impl App {
 
     async fn toggle_recording(&mut self) -> Result<(), anyhow::Error> {
         if self.audio_recorder.is_recording() {
-            self.audio_recorder.stop().await?;
+            self.audio_recorder.stop_recording();
         } else {
             self.cancel();
-            self.audio_recorder.start().await?;
+            self.audio_recorder.start_recording();
         }
 
         Ok(())
