@@ -1,4 +1,4 @@
-use std::{io::Stdout, time::Duration};
+use std::{fs, io::Stdout, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
@@ -115,7 +115,8 @@ impl App {
                 self.state.is_audio_recording_running = true;
             }
             AppEvent::AudioRecordingCompleted(audio_bytes) => {
-                self.log_info("Audio recording completed")?;
+                let len = audio_bytes.len();
+                self.log_info(format!("Audio recording completed ({len} bytes)").as_str())?;
                 self.state.is_audio_recording_running = false;
                 self.elevenlabs.transcribe(audio_bytes);
             }

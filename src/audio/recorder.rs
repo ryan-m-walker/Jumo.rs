@@ -1,4 +1,7 @@
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{
+    Stream,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+};
 use crossbeam_channel::{Receiver, Sender, bounded};
 use hound::{WavSpec, WavWriter};
 use ringbuf::{
@@ -32,6 +35,8 @@ pub struct AudioRecorder {
     sample_rate: u32,
     samples_tx: Sender<Result<RecordingEvent, String>>,
     samples_rx: Receiver<Result<RecordingEvent, String>>,
+    /// keep stream alive to avoid closing device
+    stream: Option<Stream>,
 }
 
 impl AudioRecorder {
@@ -45,12 +50,12 @@ impl AudioRecorder {
             sample_rate: 44100,
             samples_tx,
             samples_rx,
+            stream: None,
         }
     }
 
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
         let event_sender = self.event_sender.clone();
-        let is_recording = self.is_recording.clone();
 
         let host = cpal::default_host();
 
@@ -93,9 +98,7 @@ impl AudioRecorder {
                 device.build_input_stream(
                     &config.into(),
                     move |data: &[f32], _: &_| {
-                        if is_recording.load(Ordering::Relaxed) {
-                            let _ = samples_tx.send(Ok(RecordingEvent::Samples(data.to_vec())));
-                        }
+                        let _ = samples_tx.send(Ok(RecordingEvent::Samples(data.to_vec())));
 
                         if let Ok(mut buf) = detection_buffer_clone.lock() {
                             // ---------- Volume monitoring ----------
@@ -152,6 +155,7 @@ impl AudioRecorder {
         };
 
         input_stream.play().unwrap();
+        self.stream = Some(input_stream);
 
         Ok(())
     }
