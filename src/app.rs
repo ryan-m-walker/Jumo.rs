@@ -118,6 +118,7 @@ impl App {
                 let len = audio_bytes.len();
                 self.log_info(format!("Audio recording completed ({len} bytes)").as_str())?;
                 self.state.is_audio_recording_running = false;
+                self.state.input_volume = 0.0;
                 self.elevenlabs.transcribe(audio_bytes);
             }
             AppEvent::AudioRecordingError(error) => {
@@ -128,6 +129,7 @@ impl App {
             AppEvent::AudioRecordingFailed(error) => {
                 self.log_error(&format!("Audio recording failed: {error}"))?;
                 self.state.error = Some(error.to_string());
+                self.state.input_volume = 0.0;
                 self.state.is_audio_recording_running = false;
             }
             AppEvent::AudioDetected(volume) => {

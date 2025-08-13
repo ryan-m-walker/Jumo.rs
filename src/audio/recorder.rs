@@ -25,6 +25,7 @@ use crate::events::AppEvent;
 
 enum RecordingEvent {
     Samples(Vec<f32>),
+    Volume(f32),
     Stop,
 }
 
@@ -131,8 +132,8 @@ impl AudioRecorder {
                                     // debounce
                                     if let Ok(mut last_time) = last_event_time_clone.lock() {
                                         if now.duration_since(*last_time) >= cooldown_duration {
-                                            let _ = event_sender
-                                                .try_send(AppEvent::AudioDetected(rms_volume));
+                                            let _ = samples_tx
+                                                .send(Ok(RecordingEvent::Volume(rms_volume)));
                                             *last_time = now;
                                         }
                                     }
@@ -212,6 +213,9 @@ impl AudioRecorder {
                     }
                     Ok(RecordingEvent::Stop) => {
                         break;
+                    }
+                    Ok(RecordingEvent::Volume(volume)) => {
+                        let _ = event_sender.send(AppEvent::AudioDetected(volume)).await;
                     }
                     Err(err) => {
                         send_error(&format!("Failed to write sample: {err}")).await;
