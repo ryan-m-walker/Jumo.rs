@@ -74,7 +74,8 @@ impl App {
 
         self.db.init()?;
 
-        tokio::try_join!(self.audio_player.start(), self.audio_recorder.start())?;
+        self.audio_player.start().await?;
+        self.audio_recorder.start().await?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
@@ -116,11 +117,7 @@ impl App {
             AppEvent::AudioRecordingCompleted(audio_bytes) => {
                 self.log_info("Audio recording completed")?;
                 self.state.is_audio_recording_running = false;
-
-                if let Err(error) = self.elevenlabs.transcribe(audio_bytes).await {
-                    self.log_error(&format!("Audio recording failed: {error}"))?;
-                    self.state.error = Some(error.to_string());
-                }
+                self.elevenlabs.transcribe(audio_bytes);
             }
             AppEvent::AudioRecordingError(error) => {
                 self.log_error(&format!("Audio recording error: {error}"))?;
@@ -168,18 +165,8 @@ impl App {
                 // TODO: don't add if llm call fails
                 self.db.insert_message(&message)?;
                 self.state.messages.push(message);
-
-                let result = self
-                    .anthropic
-                    .prompt(&self.state.messages, &self.state)
-                    .await;
-
+                self.anthropic.prompt(&self.state.messages, &self.state);
                 self.log_info("Transcription complete")?;
-
-                if let Err(error) = result {
-                    self.state.error = Some(error.to_string());
-                    self.log_error(&format!("Transcription failed: {error}"))?;
-                }
             }
             AppEvent::TranscriptionFailed(error) => {
                 self.state.error = Some(error.to_string());
@@ -327,9 +314,7 @@ impl App {
                     self.db.insert_message(&message)?;
                     self.state.messages.push(message);
 
-                    self.anthropic
-                        .prompt(&self.state.messages, &self.state)
-                        .await?;
+                    self.anthropic.prompt(&self.state.messages, &self.state);
                 }
             }
             AppEvent::LLMGenerationFailed(error) => {
@@ -403,25 +388,13 @@ impl App {
 
         match event {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                if self.state.chat_view.mode == ChatViewMode::Insert {
-                    match key_event.code {
-                        // general
-                        KeyCode::Esc => {
-                            self.state.chat_view.mode = ChatViewMode::Normal;
-                        }
-                        _ => {}
-                    }
-
-                    return Ok(());
-                }
-
                 match key_event.code {
                     // general
                     KeyCode::Esc => self.cancel(),
                     KeyCode::Char('q') => self.quit(),
 
                     // audio
-                    KeyCode::Char(' ') => self.toggle_recording().await?,
+                    KeyCode::Char(' ') => self.toggle_recording(),
                     KeyCode::Char('i') => {
                         if self.state.chat_view.mode == ChatViewMode::Normal {
                             self.state.chat_view.mode = ChatViewMode::Insert;
@@ -491,6 +464,9 @@ impl App {
     }
 
     fn cancel(&mut self) {
+        // self.audio_recorder.stop();
+        // self.state.is_audio_recording_running = false;
+
         self.audio_player.stop();
         self.state.is_audio_playback_running = false;
 
@@ -501,15 +477,13 @@ impl App {
         self.state.is_audio_transcription_running = false;
     }
 
-    async fn toggle_recording(&mut self) -> Result<(), anyhow::Error> {
+    fn toggle_recording(&mut self) {
         if self.audio_recorder.is_recording() {
             self.audio_recorder.stop_recording();
         } else {
-            self.cancel();
+            // self.cancel();
             self.audio_recorder.start_recording();
         }
-
-        Ok(())
     }
 
     fn log(&mut self, text: &str, level: LogLevel) -> Result<(), anyhow::Error> {

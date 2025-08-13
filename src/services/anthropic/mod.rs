@@ -29,24 +29,12 @@ impl AnthropicService {
         Self { event_sender }
     }
 
-    pub async fn prompt(
-        &mut self,
-        messages: &[Message],
-        state: &AppState,
-    ) -> Result<(), anyhow::Error> {
-        let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
-            panic!("ANTHROPIC_API_KEY is not set");
-        };
-
+    pub fn prompt(&mut self, messages: &[Message], state: &AppState) {
         let message_id = Uuid::new_v4().to_string();
 
         let start_payload = LLMGenerationStartedEventPayload {
             message_id: message_id.clone(),
         };
-
-        self.event_sender
-            .send(AppEvent::LLMGenerationStarted(start_payload))
-            .await?;
 
         let mut claude_messages = vec![];
 
@@ -84,6 +72,14 @@ impl AnthropicService {
         let event_sender = self.event_sender.clone();
 
         tokio::spawn(async move {
+            let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
+                panic!("ANTHROPIC_API_KEY is not set");
+            };
+
+            let _ = event_sender
+                .send(AppEvent::LLMGenerationStarted(start_payload))
+                .await;
+
             let send_error = async |message: &str| {
                 let _ = event_sender
                     .send(AppEvent::LLMGenerationError(message.to_string()))
@@ -170,8 +166,6 @@ impl AnthropicService {
                 .send(AppEvent::LLMGenerationCompleted(completed_payload))
                 .await;
         });
-
-        Ok(())
     }
 
     pub fn cancel(&mut self) {

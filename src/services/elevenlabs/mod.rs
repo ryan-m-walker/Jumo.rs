@@ -49,7 +49,7 @@ impl ElevenLabsService {
             return Ok(());
         };
 
-        let voice_id = get_voice_id(Voice::Flynn);
+        let voice_id = get_voice_id(Voice::Jules);
 
         let url = format!(
             "wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?output_format={OUTPUT_FORMAT}"
@@ -153,19 +153,7 @@ impl ElevenLabsService {
         Ok(())
     }
 
-    pub async fn transcribe(&mut self, buffer: Vec<u8>) -> Result<(), anyhow::Error> {
-        let Ok(api_key) = std::env::var("ELEVENLABS_API_KEY") else {
-            let message = String::from("ELEVENLABS_API_KEY is not set");
-            self.event_sender.send(AppEvent::TTSFailed(message)).await?;
-            return Ok(());
-        };
-
-        self.event_sender
-            .send(AppEvent::TranscriptionStarted)
-            .await?;
-
-        let client = reqwest::Client::new();
-
+    pub fn transcribe(&mut self, buffer: Vec<u8>) {
         let event_sender = self.event_sender.clone();
 
         tokio::spawn(async move {
@@ -174,6 +162,14 @@ impl ElevenLabsService {
                     .send(AppEvent::TranscriptionFailed(message.to_string()))
                     .await;
             };
+
+            let Ok(api_key) = std::env::var("ELEVENLABS_API_KEY") else {
+                send_error("ELEVENLABS_API_KEY is not set").await;
+                return;
+            };
+
+            let client = reqwest::Client::new();
+            let _ = event_sender.send(AppEvent::TranscriptionStarted).await;
 
             let file_bytes = reqwest::multipart::Part::bytes(buffer)
                 .file_name("recording.wav")
@@ -213,8 +209,6 @@ impl ElevenLabsService {
                 .send(AppEvent::TranscriptionCompleted(text))
                 .await;
         });
-
-        Ok(())
     }
 
     pub fn cancel(&mut self) {
