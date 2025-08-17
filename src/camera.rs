@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{io::Cursor, thread::spawn};
 
 use base64::{Engine, engine::general_purpose};
 use image::{DynamicImage, ImageBuffer, Rgb, imageops};
@@ -40,7 +40,7 @@ impl Camera {
         };
 
         let dynamic_img = DynamicImage::ImageRgb8(buffer);
-        let resized = dynamic_img.resize(640, 640, imageops::FilterType::Lanczos3);
+        let resized = dynamic_img.resize(320, 320, imageops::FilterType::Nearest);
 
         let mut jpeg_bytes = Vec::new();
         resized.write_to(&mut Cursor::new(&mut jpeg_bytes), image::ImageFormat::Jpeg)?;
