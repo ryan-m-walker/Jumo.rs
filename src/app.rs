@@ -1,4 +1,4 @@
-use std::{fs, io::Stdout, time::Duration};
+use std::{fs, io::Stdout, mem::take, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
@@ -8,11 +8,12 @@ use uuid::Uuid;
 
 use crate::{
     audio::player::AudioPlayer,
+    camera::Camera,
     database::{
         Database,
         models::{
             log::{Log, LogLevel},
-            message::{ContentBlock, Message, Role},
+            message::{ContentBlock, ImageSource, MediaType, Message, Role},
         },
     },
     events::EventBus,
@@ -35,6 +36,7 @@ pub struct App {
     elevenlabs: ElevenLabsService,
     audio_recorder: AudioRecorder,
     audio_player: AudioPlayer,
+    camera: Camera,
     text_processor: TextProcessor,
     terminal: Terminal<CrosstermBackend<Stdout>>,
     state: AppState,
@@ -50,6 +52,7 @@ impl App {
         let elevenlabs = ElevenLabsService::new(event_bus.sender());
         let audio_recorder = AudioRecorder::new(event_bus.sender());
         let audio_player = AudioPlayer::new(event_bus.sender());
+        let camera = Camera::new();
         let text_processor = TextProcessor::new(event_bus.sender());
 
         Self {
@@ -60,6 +63,7 @@ impl App {
             elevenlabs,
             audio_recorder,
             audio_player,
+            camera,
             text_processor,
             state: AppState::default(),
         }
@@ -119,6 +123,11 @@ impl App {
                 self.log_info(format!("Audio recording completed ({len} bytes)").as_str())?;
                 self.state.is_audio_recording_running = false;
                 self.state.input_volume = 0.0;
+
+                if let Ok(Some(img)) = self.camera.capture() {
+                    self.state.img_base64 = Some(img);
+                }
+
                 self.elevenlabs.transcribe(audio_bytes);
             }
             AppEvent::AudioRecordingError(error) => {
@@ -158,10 +167,22 @@ impl App {
             AppEvent::TranscriptionCompleted(text) => {
                 self.state.is_audio_transcription_running = false;
 
+                let mut message_content = vec![ContentBlock::Text { text: text.clone() }];
+
+                if let Some(img) = take(&mut self.state.img_base64) {
+                    message_content.push(ContentBlock::Image {
+                        source: ImageSource {
+                            image_type: String::from("base64"),
+                            media_type: MediaType::JPEG,
+                            data: img,
+                        },
+                    })
+                };
+
                 let message = Message {
                     id: Uuid::new_v4().to_string(),
                     role: Role::User,
-                    content: vec![ContentBlock::Text { text: text.clone() }],
+                    content: message_content,
                     created_at: Some(chrono::Utc::now().to_rfc3339()),
                 };
 

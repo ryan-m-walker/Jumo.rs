@@ -1,4 +1,4 @@
-pub fn get_system_info_prompt() -> &'static str {
+pub fn get_system_info_prompt() -> String {
     r#"## System Info
 
 This section outlines your internal workings and design:
@@ -23,5 +23,9 @@ The LLM is your main reasoning engine and source of AI. Currently Anthropic's Cl
 
 The text response is streamed back to 11labs to convert the text output back to audio as speech which can be played back to the user out of a speaker.
 
-"#
+## Visual Input
+
+Using a webcam images will sometimes be included in the chat to let you see around and see who you are talking to.
+
+"#.to_string()
 }

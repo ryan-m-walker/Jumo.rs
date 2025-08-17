@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Display},
 };
 
 use ratatui::style::Color;
@@ -8,12 +8,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    camera::Img,
     database::models::{
         log::Log,
         message::{Message, Role},
     },
     emote::{Emote, color_to_char, get_color},
-    services::elevenlabs::voices::Voice,
     widgets::views::{chat::ChatViewState, home::HomeViewState, logs::LogsViewState},
 };
 
@@ -68,27 +68,17 @@ pub struct AppState {
 
     pub audio_detected: bool,
     pub input_volume: f32,
+
+    pub img_base64: Option<String>,
 }
 
 impl AppState {
     pub fn get_message(&self, id: &str) -> Option<&Message> {
-        for message in self.messages.iter() {
-            if message.id == id {
-                return Some(message);
-            }
-        }
-
-        None
+        self.messages.iter().find(|&message| message.id == id)
     }
 
     pub fn get_message_mut(&mut self, id: &str) -> Option<&mut Message> {
-        for message in self.messages.iter_mut() {
-            if message.id == id {
-                return Some(message);
-            }
-        }
-
-        None
+        self.messages.iter_mut().find(|message| message.id == id)
     }
 
     pub fn get_assistant_message_count(&self) -> usize {

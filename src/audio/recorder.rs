@@ -101,8 +101,8 @@ impl AudioRecorder {
                     move |data: &[f32], _: &_| {
                         let _ = samples_tx.send(Ok(RecordingEvent::Samples(data.to_vec())));
 
+                        // ---------- Volume monitoring ----------
                         if let Ok(mut buf) = detection_buffer_clone.lock() {
-                            // ---------- Volume monitoring ----------
                             for &sample in data {
                                 buf.push_overwrite(sample);
                             }

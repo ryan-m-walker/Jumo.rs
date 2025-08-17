@@ -9,16 +9,34 @@ pub enum Role {
     Assistant,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaType {
+    #[serde(rename = "image/jpeg")]
+    JPEG,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImageSource {
+    #[serde(rename = "type")]
+    pub image_type: String,
+    pub media_type: MediaType,
+    pub data: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum ContentBlock {
     Text {
         text: String,
     },
+    Image {
+        source: ImageSource,
+    },
     ToolUse {
         id: String,
         name: String,
-        input: serde_json::Value
+        input: serde_json::Value,
     },
     ToolResult {
         tool_use_id: String,
