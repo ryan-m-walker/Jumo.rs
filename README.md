@@ -1,4 +1,4 @@
-# Robo RS
+# Robo.rs (Jumo 2.0)
 
 Experiments with AI while making a Rust based, Raspberry PI robot companion
 
