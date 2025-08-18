@@ -1,6 +1,6 @@
 # Robo RS
 
-Experiments with AI and maybe one day robots (or embedding at least) using Rust and a Raspberry PI.
+Experiments with AI while making a Rust based, Raspberry PI robot companion
 
 ## TODO
 
@@ -58,6 +58,7 @@ Experiments with AI and maybe one day robots (or embedding at least) using Rust 
 
 - [x] Audio playback bars/visualization (input)
 - [ ] Audio playback bars/visualization (output)
+- [ ] Chat view
 - [ ] Scrolling logs
   - https://crates.io/crates/tui-scrollview
 
@@ -67,7 +68,3 @@ Experiments with AI and maybe one day robots (or embedding at least) using Rust 
   - https://crates.io/crates/sysinfo
 - [ ] AV info (input, output, etc)
 - [ ] Data storage stats (DB size, etc)
-
-### Interface
-
-- [ ] Chat view
