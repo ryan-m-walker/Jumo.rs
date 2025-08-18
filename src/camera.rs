@@ -1,35 +1,29 @@
-use std::{io::Cursor, thread::spawn};
+use std::io::Cursor;
 
 use base64::{Engine, engine::general_purpose};
-use image::{DynamicImage, ImageBuffer, Rgb, imageops};
+use image::{DynamicImage, ImageBuffer, imageops};
 use nokhwa::{
     pixel_format::RgbFormat,
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
 };
 
-pub type Img = ImageBuffer<Rgb<u8>, Vec<u8>>;
-
-pub struct Camera {
-    // event_sender: mpsc::Sender<AppEvent>,
-}
+pub struct Camera {}
 
 impl Camera {
     pub fn new() -> Self {
-        // pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
         Self {}
-        // Self { event_sender }
     }
 
     pub fn capture(&mut self) -> Result<Option<String>, anyhow::Error> {
         let requested =
             RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
-        let mut camera = nokhwa::Camera::new(CameraIndex::Index(0), requested).unwrap();
+        let mut camera = nokhwa::Camera::new(CameraIndex::Index(0), requested)?;
 
         camera.open_stream()?;
         let buffer = camera.frame()?;
         camera.stop_stream()?;
 
-        let decoded = buffer.decode_image::<RgbFormat>().unwrap();
+        let decoded = buffer.decode_image::<RgbFormat>()?;
         let width = decoded.width();
         let height = decoded.height();
 
@@ -56,7 +50,7 @@ impl Camera {
             let _ = tx.send(());
         });
 
-        rx.recv().unwrap();
+        rx.recv()?;
 
         Ok(())
     }

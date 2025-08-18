@@ -8,7 +8,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    camera::Img,
     database::models::{
         log::Log,
         message::{Message, Role},

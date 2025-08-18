@@ -124,11 +124,11 @@ impl App {
                 self.state.is_audio_recording_running = false;
                 self.state.input_volume = 0.0;
 
+                self.elevenlabs.transcribe(audio_bytes);
+
                 if let Ok(Some(img)) = self.camera.capture() {
                     self.state.img_base64 = Some(img);
                 }
-
-                self.elevenlabs.transcribe(audio_bytes);
             }
             AppEvent::AudioRecordingError(error) => {
                 self.log_error(&format!("Audio recording error: {error}"))?;
