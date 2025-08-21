@@ -2,7 +2,7 @@ use std::panic;
 
 use colored::Colorize;
 
-use crate::{app::App, camera::Camera};
+use crate::{app::App, camera::Camera, services::openai::create_embedding};
 
 mod app;
 mod audio;

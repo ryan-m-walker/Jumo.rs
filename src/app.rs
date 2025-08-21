@@ -17,7 +17,10 @@ use crate::{
         },
     },
     events::EventBus,
-    services::anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
+    services::{
+        anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
+        qdrant::QdrantService,
+    },
     state::View,
     text_processor::TextProcessor,
     tools::tools::ToolType,
@@ -39,6 +42,7 @@ pub struct App {
     camera: Camera,
     text_processor: TextProcessor,
     terminal: Terminal<CrosstermBackend<Stdout>>,
+    qdrant: QdrantService,
     state: AppState,
 }
 
@@ -54,6 +58,7 @@ impl App {
         let audio_player = AudioPlayer::new(event_bus.sender());
         let camera = Camera::new();
         let text_processor = TextProcessor::new(event_bus.sender());
+        let qdrant = QdrantService::new();
 
         Self {
             terminal,
@@ -65,6 +70,7 @@ impl App {
             audio_player,
             camera,
             text_processor,
+            qdrant,
             state: AppState::default(),
         }
     }
@@ -78,8 +84,11 @@ impl App {
 
         self.db.init()?;
 
-        self.audio_player.start().await?;
-        self.audio_recorder.start().await?;
+        tokio::try_join!(
+            self.qdrant.connect(),
+            self.audio_player.start(),
+            self.audio_recorder.start(),
+        )?;
 
         let messages = self.db.get_messages()?;
         self.state.messages = messages;
