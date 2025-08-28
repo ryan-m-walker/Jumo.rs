@@ -7,22 +7,31 @@ use qdrant_client::{
         UpsertPointsBuilder, VectorParamsBuilder,
     },
 };
+use tokio::sync::mpsc;
 
-use crate::services::openai::{EMBEDDINGS_DIMENSIONS, create_embedding};
+use crate::{
+    database::models::message::{ContentBlock, Message},
+    events::AppEvent,
+    services::openai::{EMBEDDINGS_DIMENSIONS, create_embedding},
+};
 
 const QDRANT_COLLECTION_NAME: &str = "jumo_messages";
 
 pub struct QdrantService {
     client: Option<Qdrant>,
+    event_sender: mpsc::Sender<AppEvent>,
 }
 
 impl QdrantService {
-    pub fn new() -> Self {
-        Self { client: None }
+    pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
+        Self {
+            client: None,
+            event_sender,
+        }
     }
 
-    pub async fn connect(&mut self) -> Result<(), anyhow::Error> {
-        let qdrant_url = env::var("QDRANT_URL").unwrap_or("http://localhost:6333".to_string());
+    pub async fn init(&mut self) -> Result<(), anyhow::Error> {
+        let qdrant_url = env::var("QDRANT_URL").unwrap_or("http://localhost:6334".to_string());
         let client = Qdrant::from_url(&qdrant_url).build()?;
 
         let create_collection_request = CreateCollectionBuilder::new(QDRANT_COLLECTION_NAME)
@@ -32,27 +41,74 @@ impl QdrantService {
             ))
             .quantization_config(ScalarQuantizationBuilder::default());
 
-        client.create_collection(create_collection_request).await?;
+        let collections_result = client.list_collections().await?;
+        let collection_exists = collections_result
+            .collections
+            .iter()
+            .any(|c| c.name == QDRANT_COLLECTION_NAME);
+
+        if !collection_exists {
+            client.create_collection(create_collection_request).await?;
+        }
 
         self.client = Some(client);
 
         Ok(())
     }
 
-    pub async fn insert_message(&self, text: &str) -> Result<(), anyhow::Error> {
-        let Some(client) = &self.client else {
-            return Err(anyhow::anyhow!("Qdrant client is not initialized"));
-        };
+    pub fn insert_message(&self, message: &Message) -> Result<(), anyhow::Error> {
+        let message = message.clone();
 
-        let embedding = create_embedding(text).await?;
+        tokio::spawn(async move {
+            let qdrant_url = env::var("QDRANT_URL").unwrap_or("http://localhost:6334".to_string());
 
-        let payload: Payload = serde_json::json!({}).try_into()?;
+            for content in &message.content {
+                if let ContentBlock::Text { text } = content {
+                    let client = match Qdrant::from_url(&qdrant_url).build() {
+                        Ok(client) => client,
+                        Err(err) => {
+                            // TODO: log error
+                            return;
+                        }
+                    };
 
-        let points = vec![PointStruct::new(0, embedding, payload)];
+                    let embedding = match create_embedding(text).await {
+                        Ok(embedding) => embedding,
+                        Err(err) => {
+                            // TODO: log error
+                            return;
+                        }
+                    };
 
-        client
-            .upsert_points(UpsertPointsBuilder::new(QDRANT_COLLECTION_NAME, points))
-            .await?;
+                    let payload = serde_json::json!({
+                        "message_id": message.id,
+                        "role": message.role,
+                        "created_at": message.created_at,
+                        "text": text,
+                    });
+
+                    let payload: Payload = match payload.try_into() {
+                        Ok(payload) => payload,
+                        Err(err) => {
+                            // TODO: log error
+                            return;
+                        }
+                    };
+
+                    let points = vec![PointStruct::new(message.id.clone(), embedding, payload)];
+
+                    let res = client
+                        .upsert_points(UpsertPointsBuilder::new(QDRANT_COLLECTION_NAME, points))
+                        .await;
+
+                    if let Err(err) = res {
+                        // let _ = self.event_sender.send(AppEvent::Log(format!(
+                        //     "Failed to insert message into Qdrant: {err}".to_string()
+                        // ));
+                    }
+                }
+            }
+        });
 
         Ok(())
     }

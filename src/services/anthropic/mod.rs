@@ -12,6 +12,7 @@ use crate::{
         AppEvent, LLMGenerationCompletedEventPayload, LLMGenerationStartedEventPayload,
         LLMStreamEventPayload, LogEventPayload,
     },
+    features::Features,
     prompts::get_system_prompt,
     services::anthropic::types::{AnthropicInput, AnthropicMessage, AnthropicMessageStreamEvent},
     state::AppState,
@@ -53,6 +54,15 @@ impl AnthropicService {
                             }
                         }
                         _ => content.clone(),
+                    })
+                    .filter(|content| {
+                        if let ContentBlock::Image { .. } = content {
+                            if !Features::video_capture_enabled() {
+                                return false;
+                            }
+                        }
+
+                        true
                     })
                     .collect(),
             });

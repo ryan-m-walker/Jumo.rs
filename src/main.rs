@@ -2,7 +2,10 @@ use std::panic;
 
 use colored::Colorize;
 
-use crate::{app::App, camera::Camera, services::openai::create_embedding};
+use crate::database::models::message::{ContentBlock, Message, Role};
+use crate::events::{AppEvent, EventBus};
+use crate::services::qdrant::QdrantService;
+use crate::{app::App, camera::Camera};
 
 mod app;
 mod audio;
@@ -11,6 +14,8 @@ mod database;
 mod emote;
 mod environment;
 mod events;
+mod features;
+mod memory;
 mod prompts;
 mod services;
 mod state;

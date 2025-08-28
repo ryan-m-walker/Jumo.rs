@@ -102,6 +102,8 @@ pub enum AppEvent {
 
     SetEmote(Emote),
     SetColor(Color),
+
+    EmbeddingSaved(String),
 }
 
 pub struct EventBus {

@@ -17,6 +17,8 @@ use crate::{
         },
     },
     events::EventBus,
+    features::Features,
+    memory::postgres::PostgresMemory,
     services::{
         anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
         qdrant::QdrantService,
@@ -43,6 +45,7 @@ pub struct App {
     text_processor: TextProcessor,
     terminal: Terminal<CrosstermBackend<Stdout>>,
     qdrant: QdrantService,
+    postgres: PostgresMemory,
     state: AppState,
 }
 
@@ -58,7 +61,8 @@ impl App {
         let audio_player = AudioPlayer::new(event_bus.sender());
         let camera = Camera::new();
         let text_processor = TextProcessor::new(event_bus.sender());
-        let qdrant = QdrantService::new();
+        let qdrant = QdrantService::new(event_bus.sender());
+        let postgres = PostgresMemory::new();
 
         Self {
             terminal,
@@ -72,6 +76,7 @@ impl App {
             text_processor,
             qdrant,
             state: AppState::default(),
+            postgres,
         }
     }
 
@@ -85,7 +90,8 @@ impl App {
         self.db.init()?;
 
         tokio::try_join!(
-            self.qdrant.connect(),
+            self.qdrant.init(),
+            // self.postgres.init(),
             self.audio_player.start(),
             self.audio_recorder.start(),
         )?;
@@ -135,8 +141,10 @@ impl App {
 
                 self.elevenlabs.transcribe(audio_bytes);
 
-                if let Ok(Some(img)) = self.camera.capture() {
-                    self.state.img_base64 = Some(img);
+                if Features::video_capture_enabled() {
+                    if let Ok(Some(img)) = self.camera.capture() {
+                        self.state.img_base64 = Some(img);
+                    }
                 }
             }
             AppEvent::AudioRecordingError(error) => {
@@ -197,6 +205,8 @@ impl App {
 
                 // TODO: don't add if llm call fails
                 self.db.insert_message(&message)?;
+                self.qdrant.insert_message(&message)?;
+
                 self.state.messages.push(message);
                 self.anthropic.prompt(&self.state.messages, &self.state);
                 self.log_info("Transcription complete")?;
@@ -333,6 +343,7 @@ impl App {
                         }
                     }
 
+                    self.qdrant.insert_message(message)?;
                     self.db.insert_message(message)?;
                 }
 
@@ -408,6 +419,10 @@ impl App {
                 if let Err(err) = self.state.persist_state().await {
                     self.log_error(&format!("Failed to persist state: {err}"))?;
                 }
+            }
+
+            AppEvent::EmbeddingSaved(_text) => {
+                // pass
             }
         }
 
