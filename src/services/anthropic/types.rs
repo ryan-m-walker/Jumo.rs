@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    database::models::message::{ContentBlock, Role},
     tools::ToolInput,
+    types::message::{ContentBlock, Role},
 };
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]

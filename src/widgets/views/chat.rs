@@ -39,7 +39,7 @@ impl<'a> ChatViewWidget<'a> {
 
 impl Widget for ChatViewWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let block = Block::bordered()
+        let _block = Block::bordered()
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(self.state.color));
 

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::config::CONFIG;
+
 pub const EMBEDDINGS_DIMENSIONS: usize = 1536;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,10 +24,6 @@ pub struct EmbeddingResponse {
 }
 
 pub async fn create_embedding(input: &str) -> Result<Vec<f32>, anyhow::Error> {
-    let Ok(api_key) = std::env::var("OPENAI_API_KEY") else {
-        return Err(anyhow::anyhow!("OPENAI_API_KEY is not set"));
-    };
-
     let client = reqwest::Client::new();
 
     let input = EmbeddingRequest {
@@ -36,7 +34,7 @@ pub async fn create_embedding(input: &str) -> Result<Vec<f32>, anyhow::Error> {
 
     let resp = client
         .post("https://api.openai.com/v1/embeddings")
-        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Authorization", format!("Bearer {}", CONFIG.openai_api_key))
         .header("Content-Type", "application/json")
         .json(&input)
         .send()

@@ -7,6 +7,7 @@ use tokio_tungstenite::{
     tungstenite::{Message, client::IntoClientRequest},
 };
 
+use crate::config::CONFIG;
 use crate::services::elevenlabs::types::WebSocketEndMessage;
 use crate::services::elevenlabs::voices::{Voice, get_voice_id};
 use crate::{
@@ -43,19 +44,15 @@ impl ElevenLabsService {
             return Ok(());
         }
 
-        let Ok(api_key) = std::env::var("ELEVENLABS_API_KEY") else {
-            let message = String::from("ELEVENLABS_API_KEY is not set");
-            self.event_sender.send(AppEvent::TTSFailed(message)).await?;
-            return Ok(());
-        };
-
         let voice_id = get_voice_id(Voice::Jules);
 
         let url = format!(
             "wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?output_format={OUTPUT_FORMAT}"
         );
         let mut request = url.into_client_request()?;
-        request.headers_mut().insert("xi-api-key", api_key.parse()?);
+        request
+            .headers_mut()
+            .insert("xi-api-key", CONFIG.elevenlabs_api_key.parse()?);
 
         let Ok((ws_stream, _)) = connect_async(request).await else {
             let message = String::from("Failed to connect to elevenlabs");
@@ -71,7 +68,7 @@ impl ElevenLabsService {
                 stability: 0.5,
                 similarity_boost: 0.8,
             },
-            xi_api_key: api_key.clone(),
+            xi_api_key: CONFIG.elevenlabs_api_key.clone(),
         };
 
         let init_json = serde_json::to_string(&init_message)?;
@@ -163,11 +160,6 @@ impl ElevenLabsService {
                     .await;
             };
 
-            let Ok(api_key) = std::env::var("ELEVENLABS_API_KEY") else {
-                send_error("ELEVENLABS_API_KEY is not set").await;
-                return;
-            };
-
             let client = reqwest::Client::new();
             let _ = event_sender.send(AppEvent::TranscriptionStarted).await;
 
@@ -186,7 +178,7 @@ impl ElevenLabsService {
 
             let resp = client
                 .post("https://api.elevenlabs.io/v1/speech-to-text")
-                .header("xi-api-key", api_key)
+                .header("xi-api-key", &CONFIG.elevenlabs_api_key)
                 .multipart(form)
                 .send()
                 .await;

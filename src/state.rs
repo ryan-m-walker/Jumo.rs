@@ -3,16 +3,17 @@ use std::{
     fmt::{self, Display},
 };
 
+use mongodb::bson::oid::ObjectId;
 use ratatui::style::Color;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    database::models::{
-        log::Log,
+    emote::{Emote, color_to_char, get_color},
+    types::{
+        logs::Log,
         message::{Message, Role},
     },
-    emote::{Emote, color_to_char, get_color},
     widgets::views::{chat::ChatViewState, home::HomeViewState, logs::LogsViewState},
 };
 
@@ -56,7 +57,7 @@ pub struct AppState {
 
     pub audio_input_device: String,
     pub audio_output_device: String,
-    pub tool_input_buffers: HashMap<(String, usize), String>,
+    pub tool_input_buffers: HashMap<(ObjectId, usize), String>,
     pub emote: Emote,
     pub color: Color,
 
@@ -69,15 +70,17 @@ pub struct AppState {
     pub input_volume: f32,
 
     pub img_base64: Option<String>,
+
+    pub current_exchange: Vec<Message>,
 }
 
 impl AppState {
-    pub fn get_message(&self, id: &str) -> Option<&Message> {
-        self.messages.iter().find(|&message| message.id == id)
+    pub fn get_message(&self, id: &ObjectId) -> Option<&Message> {
+        self.messages.iter().find(|&message| &message._id == id)
     }
 
-    pub fn get_message_mut(&mut self, id: &str) -> Option<&mut Message> {
-        self.messages.iter_mut().find(|message| message.id == id)
+    pub fn get_message_mut(&mut self, id: &ObjectId) -> Option<&mut Message> {
+        self.messages.iter_mut().find(|message| &message._id == id)
     }
 
     pub fn get_assistant_message_count(&self) -> usize {

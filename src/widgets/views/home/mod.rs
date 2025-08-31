@@ -1,15 +1,15 @@
-use chrono::{DateTime, Local};
+use chrono::DateTime;
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Styled, Stylize},
+    layout::Rect,
+    style::{Color, Style, Stylize},
     text::Line,
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
 use crate::{
-    database::models::message::{ContentBlock, Role},
     state::AppState,
+    types::message::{ContentBlock, Role},
 };
 
 mod audio_bars;
@@ -64,7 +64,7 @@ impl Widget for HomeViewWidget<'_> {
 
         let timestamp = match selected_message {
             Some(message) => {
-                if let Some(created_at) = &message.created_at {
+                if let Ok(created_at) = &message.created_at.try_to_rfc3339_string() {
                     match DateTime::parse_from_rfc3339(created_at) {
                         Ok(ts) => ts.format("%b %d, %I:%M:%S%P").to_string(),
                         Err(_) => String::from("Invalid Timestamp"),

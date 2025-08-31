@@ -18,12 +18,23 @@ services:
       timeout: 10s
       retries: 3
   postgres:
+    env_file:
+      - .env
     image: postgres
+    ports:
+      - "5432:5432"
     restart: always
     environment:
-      - POSTGRES_PASSWORD=jumo
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+  mongodb:
+    image: mongo
+    ports:
+      # IMPORTANT: MAPPING EXTERNAL PORT FROM DIFFERENT PORT NUMBER TO AVOID CONFLICTS WITH LOCAL INSTALL
+      - 27019:27017
+    volumes:
+      - mongodb_data:/data/db
 
 volumes:
   qdrant_data:

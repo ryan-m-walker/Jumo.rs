@@ -1,14 +1,14 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Style, Stylize},
+    style::Style,
     text::Line,
     widgets::{Block, BorderType, Paragraph, Widget, Wrap},
 };
 
 use crate::{
-    database::models::message::{ContentBlock, Role},
     state::AppState,
+    types::message::{ContentBlock, Role},
     widgets::{nav_tabs::NavTabs, status_line::StatusLine},
 };
 

@@ -7,8 +7,8 @@ use ratatui::{
 };
 
 use crate::{
-    database::models::log::{Log, LogLevel},
     state::AppState,
+    types::logs::{Log, LogLevel},
 };
 
 #[derive(Default, Debug, Clone)]

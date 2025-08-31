@@ -1,10 +1,11 @@
+use mongodb::bson::oid::ObjectId;
 use ratatui::style::Color;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::{
-    database::models::log::LogLevel, emote::Emote,
-    services::anthropic::types::AnthropicMessageStreamEvent, state::View,
+    emote::Emote, services::anthropic::types::AnthropicMessageStreamEvent, state::View,
+    types::logs::LogLevel,
 };
 
 #[derive(Debug, Clone)]
@@ -45,18 +46,18 @@ pub struct LogEventPayload {
 
 #[derive(Debug, Clone)]
 pub struct LLMGenerationStartedEventPayload {
-    pub message_id: String,
+    pub message_id: ObjectId,
 }
 
 #[derive(Debug, Clone)]
 pub struct LLMStreamEventPayload {
-    pub message_id: String,
+    pub message_id: ObjectId,
     pub event: AnthropicMessageStreamEvent,
 }
 
 #[derive(Debug, Clone)]
 pub struct LLMGenerationCompletedEventPayload {
-    pub message_id: String,
+    pub message_id: ObjectId,
 }
 
 #[derive(Debug)]

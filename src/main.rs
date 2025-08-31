@@ -1,16 +1,12 @@
 use std::panic;
 
-use colored::Colorize;
-
-use crate::database::models::message::{ContentBlock, Message, Role};
-use crate::events::{AppEvent, EventBus};
-use crate::services::qdrant::QdrantService;
 use crate::{app::App, camera::Camera};
+use colored::Colorize;
 
 mod app;
 mod audio;
 mod camera;
-mod database;
+mod config;
 mod emote;
 mod environment;
 mod events;
@@ -21,6 +17,7 @@ mod services;
 mod state;
 mod text_processor;
 mod tools;
+mod types;
 mod widgets;
 
 #[tokio::main]
@@ -45,7 +42,7 @@ async fn run() -> Result<(), anyhow::Error> {
 
     let terminal = ratatui::init();
 
-    let mut app = App::new(terminal);
+    let mut app = App::new(terminal).await?;
     app.start().await?;
 
     Ok(())

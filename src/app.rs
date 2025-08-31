@@ -1,31 +1,25 @@
-use std::{fs, io::Stdout, mem::take, time::Duration};
+use std::{io::Stdout, mem::take, time::Duration};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
+use mongodb::bson::{DateTime, oid::ObjectId};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use tui_input::backend::crossterm::EventHandler;
-use uuid::Uuid;
 
 use crate::{
     audio::player::AudioPlayer,
     camera::Camera,
-    database::{
-        Database,
-        models::{
-            log::{Log, LogLevel},
-            message::{ContentBlock, ImageSource, MediaType, Message, Role},
-        },
-    },
     events::EventBus,
     features::Features,
-    memory::postgres::PostgresMemory,
-    services::{
-        anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
-        qdrant::QdrantService,
-    },
+    memory::MemoryManager,
+    services::anthropic::types::{AnthropicContentBlockDelta, AnthropicMessageStreamEvent},
     state::View,
     text_processor::TextProcessor,
     tools::tools::ToolType,
+    types::{
+        logs::{Log, LogLevel},
+        message::{ContentBlock, ImageSource, MediaType, Message, Role},
+    },
     widgets::{app_layout::AppLayout, views::chat::ChatViewMode},
 };
 use crate::{audio::recorder::AudioRecorder, events::AppEvent};
@@ -35,7 +29,6 @@ use crate::{
 };
 
 pub struct App {
-    db: Database,
     event_bus: EventBus,
     anthropic: AnthropicService,
     elevenlabs: ElevenLabsService,
@@ -44,16 +37,14 @@ pub struct App {
     camera: Camera,
     text_processor: TextProcessor,
     terminal: Terminal<CrosstermBackend<Stdout>>,
-    qdrant: QdrantService,
-    postgres: PostgresMemory,
     state: AppState,
+    memory: MemoryManager,
 }
 
 const FRAMES_PER_SECOND: f32 = 60.0;
 
 impl App {
-    pub fn new(terminal: Terminal<CrosstermBackend<Stdout>>) -> Self {
-        let db = Database::new();
+    pub async fn new(terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<Self, anyhow::Error> {
         let event_bus = EventBus::new();
         let anthropic = AnthropicService::new(event_bus.sender());
         let elevenlabs = ElevenLabsService::new(event_bus.sender());
@@ -61,42 +52,33 @@ impl App {
         let audio_player = AudioPlayer::new(event_bus.sender());
         let camera = Camera::new();
         let text_processor = TextProcessor::new(event_bus.sender());
-        let qdrant = QdrantService::new(event_bus.sender());
-        let postgres = PostgresMemory::new();
+        let memory = MemoryManager::new(event_bus.sender()).await?;
 
-        Self {
+        Ok(Self {
             terminal,
             event_bus,
-            db,
             anthropic,
             elevenlabs,
             audio_recorder,
             audio_player,
             camera,
             text_processor,
-            qdrant,
             state: AppState::default(),
-            postgres,
-        }
+            memory,
+        })
     }
 
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
         if let Err(err) = self.state.load_state().await {
-            self.log_error(&format!("Failed to load state: {err}"))?;
+            self.log_error(&format!("Failed to load state: {err}"))
+                .await?;
         }
 
         self.state.is_app_running = true;
 
-        self.db.init()?;
+        tokio::try_join!(self.audio_player.start(), self.audio_recorder.start(),)?;
 
-        tokio::try_join!(
-            self.qdrant.init(),
-            // self.postgres.init(),
-            self.audio_player.start(),
-            self.audio_recorder.start(),
-        )?;
-
-        let messages = self.db.get_messages()?;
+        let messages = self.memory.mongodb.messages.get_recent_messages().await?;
         self.state.messages = messages;
 
         let message_count = self.state.get_assistant_message_count();
@@ -106,10 +88,10 @@ impl App {
             0
         };
 
-        let logs = self.db.get_logs()?;
+        let logs = self.memory.mongodb.logs.get_recent_logs().await?;
         self.state.logs_view.logs = logs;
 
-        self.log_info("App started")?;
+        self.log_info("App started").await?;
 
         let period = Duration::from_secs_f32(1.0 / FRAMES_PER_SECOND);
         let mut interval = tokio::time::interval(period);
@@ -130,12 +112,13 @@ impl App {
         match event {
             // audio events
             AppEvent::AudioRecordingStarted => {
-                self.log_info("Audio recording started")?;
+                self.log_info("Audio recording started").await?;
                 self.state.is_audio_recording_running = true;
             }
             AppEvent::AudioRecordingCompleted(audio_bytes) => {
                 let len = audio_bytes.len();
-                self.log_info(format!("Audio recording completed ({len} bytes)").as_str())?;
+                self.log_info(format!("Audio recording completed ({len} bytes)").as_str())
+                    .await?;
                 self.state.is_audio_recording_running = false;
                 self.state.input_volume = 0.0;
 
@@ -148,12 +131,14 @@ impl App {
                 }
             }
             AppEvent::AudioRecordingError(error) => {
-                self.log_error(&format!("Audio recording error: {error}"))?;
+                self.log_error(&format!("Audio recording error: {error}"))
+                    .await?;
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_recording_running = false;
             }
             AppEvent::AudioRecordingFailed(error) => {
-                self.log_error(&format!("Audio recording failed: {error}"))?;
+                self.log_error(&format!("Audio recording failed: {error}"))
+                    .await?;
                 self.state.error = Some(error.to_string());
                 self.state.input_volume = 0.0;
                 self.state.is_audio_recording_running = false;
@@ -166,7 +151,8 @@ impl App {
                 self.state.audio_detected = false;
             }
             AppEvent::AudioPlaybackError(error) => {
-                self.log_error(&format!("Audio playback error: {error}"))?;
+                self.log_error(&format!("Audio playback error: {error}"))
+                    .await?;
                 self.state.error = Some(error.to_string());
             }
             AppEvent::AudioSetInputDevice(device_name) => {
@@ -178,7 +164,7 @@ impl App {
 
             // transcription events
             AppEvent::TranscriptionStarted => {
-                self.log_info("Transcription started")?;
+                self.log_info("Transcription started").await?;
                 self.state.is_audio_transcription_running = true;
             }
             AppEvent::TranscriptionCompleted(text) => {
@@ -197,37 +183,36 @@ impl App {
                 };
 
                 let message = Message {
-                    id: Uuid::new_v4().to_string(),
+                    _id: ObjectId::new(),
                     role: Role::User,
                     content: message_content,
-                    created_at: Some(chrono::Utc::now().to_rfc3339()),
+                    created_at: DateTime::now(),
                 };
 
-                // TODO: don't add if llm call fails
-                self.db.insert_message(&message)?;
-                self.qdrant.insert_message(&message)?;
+                self.anthropic
+                    .prompt(&message, &self.state.messages, &self.state);
+                self.state.current_exchange.push(message);
 
-                self.state.messages.push(message);
-                self.anthropic.prompt(&self.state.messages, &self.state);
-                self.log_info("Transcription complete")?;
+                self.log_info("Transcription complete").await?;
             }
             AppEvent::TranscriptionFailed(error) => {
                 self.state.error = Some(error.to_string());
                 self.state.is_audio_transcription_running = false;
-                self.log_error(&format!("Transcription failed: {error}"))?;
+                self.log_error(&format!("Transcription failed: {error}"))
+                    .await?;
             }
 
             // llm events
             AppEvent::LLMGenerationStarted(payload) => {
                 self.state.is_llm_message_running = true;
 
-                self.log_info("LLM message started")?;
+                self.log_info("LLM message started").await?;
 
                 let message = Message {
-                    id: payload.message_id,
+                    _id: payload.message_id,
                     role: Role::Assistant,
                     content: vec![],
-                    created_at: Some(chrono::Utc::now().to_rfc3339()),
+                    created_at: DateTime::now(),
                 };
 
                 self.state.messages.push(message);
@@ -315,7 +300,7 @@ impl App {
             AppEvent::LLMGenerationCompleted(payload) => {
                 self.state.is_llm_message_running = false;
 
-                self.log_info("LLM message completed")?;
+                self.log_info("LLM message completed").await?;
 
                 self.text_processor.flush().await?;
 
@@ -327,7 +312,7 @@ impl App {
                             let string_input = input.to_string();
 
                             let result = ToolType::execute_tool(
-                                name,
+                                &name,
                                 &string_input,
                                 &self.state,
                                 self.event_bus.sender(),
@@ -342,66 +327,70 @@ impl App {
                             tool_result_blocks.push(block);
                         }
                     }
-
-                    self.qdrant.insert_message(message)?;
-                    self.db.insert_message(message)?;
                 }
 
                 if !tool_result_blocks.is_empty() {
                     let message = Message {
-                        id: Uuid::new_v4().to_string(),
+                        _id: ObjectId::new(),
                         role: Role::User,
                         content: tool_result_blocks,
-                        created_at: Some(chrono::Utc::now().to_rfc3339()),
+                        created_at: DateTime::now(),
                     };
 
-                    self.db.insert_message(&message)?;
-                    self.state.messages.push(message);
-
-                    self.anthropic.prompt(&self.state.messages, &self.state);
+                    self.anthropic
+                        .prompt(&message, &self.state.messages, &self.state);
+                } else {
+                    self.memory
+                        .process_exchange(&self.state.current_exchange)
+                        .await?;
+                    self.state.current_exchange.clear();
                 }
             }
             AppEvent::LLMGenerationFailed(error) => {
-                self.log_error(&format!("LLM request failed: {error}"))?;
+                self.log_error(&format!("LLM request failed: {error}"))
+                    .await?;
                 self.state.error = Some(error.to_string());
                 self.state.is_llm_message_running = false;
+                self.state.current_exchange.clear();
             }
 
             AppEvent::LLMGenerationError(error) => {
-                self.log_error(&format!("LLM generation error: {error}"))?;
+                self.log_error(&format!("LLM generation error: {error}"))
+                    .await?;
                 self.state.error = Some(error.to_string());
             }
 
             AppEvent::TextProcessorTextChunk(payload) => {
-                self.log_info("Text processor text chunk")?;
+                self.log_info("Text processor text chunk").await?;
                 self.elevenlabs.send_text(&payload.text).await?;
             }
             AppEvent::TextProcessorFlushed => {
-                self.log_info("Text processor flushed")?;
+                self.log_info("Text processor flushed").await?;
                 self.elevenlabs.end_stream().await?;
             }
 
             // tts events
             AppEvent::TTSChunk(audio_bytes) => {
                 if let Err(error) = self.audio_player.push_audio_chunk(&audio_bytes) {
-                    self.log_error(&format!("TTS chunk failed: {error}"))?;
+                    self.log_error(&format!("TTS chunk failed: {error}"))
+                        .await?;
                     self.state.error = Some(error.to_string());
                 }
             }
             AppEvent::TTSError(error) => {
-                self.log_error(&format!("TTS error: {error}"))?;
+                self.log_error(&format!("TTS error: {error}")).await?;
                 self.state.error = Some(error.to_string());
                 self.state.is_tts_running = false;
             }
             AppEvent::TTSFailed(error) => {
-                self.log_error(&format!("TTS failed: {error}"))?;
+                self.log_error(&format!("TTS failed: {error}")).await?;
                 self.state.error = Some(error.to_string());
                 self.state.is_tts_running = false;
             }
 
             // log events
             AppEvent::Log(payload) => {
-                self.log(&payload.message, payload.level)?;
+                self.log(&payload.message, payload.level).await?;
             }
 
             AppEvent::SetView(view) => {
@@ -417,7 +406,8 @@ impl App {
                 self.state.color = color;
 
                 if let Err(err) = self.state.persist_state().await {
-                    self.log_error(&format!("Failed to persist state: {err}"))?;
+                    self.log_error(&format!("Failed to persist state: {err}"))
+                        .await?;
                 }
             }
 
@@ -534,17 +524,20 @@ impl App {
         }
     }
 
-    fn log(&mut self, text: &str, level: LogLevel) -> Result<(), anyhow::Error> {
-        self.db.insert_log(text, level)?;
-        self.state.log(Log::new(text, level));
+    async fn log(&mut self, text: &str, level: LogLevel) -> Result<(), anyhow::Error> {
+        let log = Log::new(text, level);
+        self.memory.mongodb.logs.insert_one(&log).await?;
+        self.state.log(log);
         Ok(())
     }
 
-    fn log_info(&mut self, text: &str) -> Result<(), anyhow::Error> {
-        self.log(text, LogLevel::Info)
+    async fn log_info(&mut self, text: &str) -> Result<(), anyhow::Error> {
+        self.log(text, LogLevel::Info).await?;
+        Ok(())
     }
 
-    fn log_error(&mut self, text: &str) -> Result<(), anyhow::Error> {
-        self.log(text, LogLevel::Error)
+    async fn log_error(&mut self, text: &str) -> Result<(), anyhow::Error> {
+        self.log(text, LogLevel::Error).await?;
+        Ok(())
     }
 }

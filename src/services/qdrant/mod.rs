@@ -7,27 +7,21 @@ use qdrant_client::{
         UpsertPointsBuilder, VectorParamsBuilder,
     },
 };
-use tokio::sync::mpsc;
 
 use crate::{
-    database::models::message::{ContentBlock, Message},
-    events::AppEvent,
     services::openai::{EMBEDDINGS_DIMENSIONS, create_embedding},
+    types::message::{ContentBlock, Message},
 };
 
 const QDRANT_COLLECTION_NAME: &str = "jumo_messages";
 
 pub struct QdrantService {
     client: Option<Qdrant>,
-    event_sender: mpsc::Sender<AppEvent>,
 }
 
 impl QdrantService {
-    pub fn new(event_sender: mpsc::Sender<AppEvent>) -> Self {
-        Self {
-            client: None,
-            event_sender,
-        }
+    pub fn new() -> Self {
+        Self { client: None }
     }
 
     pub async fn init(&mut self) -> Result<(), anyhow::Error> {
@@ -56,7 +50,7 @@ impl QdrantService {
         Ok(())
     }
 
-    pub fn insert_message(&self, message: &Message) -> Result<(), anyhow::Error> {
+    pub async fn insert_message(&self, message: &Message) -> Result<(), anyhow::Error> {
         let message = message.clone();
 
         tokio::spawn(async move {
@@ -66,7 +60,7 @@ impl QdrantService {
                 if let ContentBlock::Text { text } = content {
                     let client = match Qdrant::from_url(&qdrant_url).build() {
                         Ok(client) => client,
-                        Err(err) => {
+                        Err(_err) => {
                             // TODO: log error
                             return;
                         }
@@ -74,14 +68,14 @@ impl QdrantService {
 
                     let embedding = match create_embedding(text).await {
                         Ok(embedding) => embedding,
-                        Err(err) => {
+                        Err(_err) => {
                             // TODO: log error
                             return;
                         }
                     };
 
                     let payload = serde_json::json!({
-                        "message_id": message.id,
+                        "message_id": message._id.to_string(),
                         "role": message.role,
                         "created_at": message.created_at,
                         "text": text,
@@ -89,19 +83,23 @@ impl QdrantService {
 
                     let payload: Payload = match payload.try_into() {
                         Ok(payload) => payload,
-                        Err(err) => {
+                        Err(_err) => {
                             // TODO: log error
                             return;
                         }
                     };
 
-                    let points = vec![PointStruct::new(message.id.clone(), embedding, payload)];
+                    let points = vec![PointStruct::new(
+                        message._id.to_string(),
+                        embedding,
+                        payload,
+                    )];
 
                     let res = client
                         .upsert_points(UpsertPointsBuilder::new(QDRANT_COLLECTION_NAME, points))
                         .await;
 
-                    if let Err(err) = res {
+                    if let Err(_err) = res {
                         // let _ = self.event_sender.send(AppEvent::Log(format!(
                         //     "Failed to insert message into Qdrant: {err}".to_string()
                         // ));
